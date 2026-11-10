@@ -4,6 +4,7 @@
 
 #include "../../src/app.h"
 #include "../../src/clock.h"
+#include "../../src/sync_logic.h"
 #include "../../src/tasks.h"
 #include "../../src/text.h"
 
@@ -257,6 +258,10 @@ static void testWifiFlow() {
 
   App empty;  // works with an empty list too
   CHECK(empty.onButton(Button::Left, 0).startWifi);
+  CHECK(!empty.onButton(Button::Confirm, 0).syncNow);  // sync not configured: nothing
+  empty.syncConfigured = true;
+  fx = empty.onButton(Button::Confirm, 0);
+  CHECK(fx.syncNow && fx.stopWifi && empty.screen == Screen::List);
 }
 
 static void testLibraryModel() {
@@ -374,6 +379,45 @@ static void testLibraryNavigation() {
   CHECK(a.screen == Screen::List);
 }
 
+static void testSyncLogic() {
+  // Done marks carry over by (time, text); never lost.
+  TaskList local, fresh;
+  const char* l = "## A\n[x] 09:00 | Toplantı\n[ ] 10:00 | Rapor\n[x] Kitap oku\n";
+  const char* f = "## A\n[ ] 09:00 | Toplantı\n[ ] 10:00 | Rapor\n[ ] Kitap oku\n[ ] 11:00 | Toplantı\n[x] Yeni\n";
+  local.parse(l, strlen(l));
+  fresh.parse(f, strlen(f));
+  CHECK(mergeDoneMarks(fresh, local) == 2);
+  CHECK(fresh.items[0].done && !fresh.items[1].done && fresh.items[2].done);
+  CHECK(!fresh.items[3].done);  // same text, different time: another task
+  CHECK(fresh.items[4].done);   // done on the server stays done
+
+  char b64[64];
+  const char* in = "Merhaba ğ!";
+  CHECK(base64Encode(reinterpret_cast<const uint8_t*>(in), strlen(in), b64, sizeof b64) > 0);
+  CHECK(strcmp(b64, "TWVyaGFiYSDEnyE=") == 0);
+  CHECK(base64Encode(reinterpret_cast<const uint8_t*>("ab"), 2, b64, sizeof b64) == 4 && strcmp(b64, "YWI=") == 0);
+  CHECK(base64Encode(reinterpret_cast<const uint8_t*>("abc"), 3, b64, 4) == 0);  // too small
+
+  char sha[48];
+  const char* json = "{\"name\": \"cihaz.txt\", \"sha\" : \"3d21ec53a331a6f037a91c368710b99387d012c1\", \"size\": 12}";
+  CHECK(jsonStringField(json, "sha", sha, sizeof sha) && strcmp(sha, "3d21ec53a331a6f037a91c368710b99387d012c1") == 0);
+  CHECK(!jsonStringField(json, "content", sha, sizeof sha));
+  CHECK(!jsonStringField(json, "sha", sha, 8));  // too long for the buffer
+
+  char body[256];
+  CHECK(buildPutBody("X3 \"eşitleme\"", "YWI=", "abc", "main", body, sizeof body));
+  CHECK(strcmp(body, "{\"message\":\"X3 \\\"eşitleme\\\"\",\"content\":\"YWI=\",\"branch\":\"main\",\"sha\":\"abc\"}") == 0);
+  CHECK(buildPutBody("m", "YWI=", "", "main", body, sizeof body) && strstr(body, "sha") == nullptr);
+  CHECK(!buildPutBody("m", "YWI=", "", "main", body, 10));
+
+  char state[512];
+  const size_t n = buildDeviceStateFile(local, "2026-11-11 07:02", state, sizeof state);
+  CHECK(n > 0 && strncmp(state, "# X3 cihaz durumu. guncellendi: 2026-11-11 07:02\n", 49) == 0);
+  TaskList back;
+  back.parse(state, n);
+  CHECK(back.count == 3 && back.items[0].done && back.items[2].done);
+}
+
 static void testEmptyList() {
   App a;
   CHECK(!a.onButton(Button::Confirm, 0).save);
@@ -409,6 +453,19 @@ static void testClock() {
   const char* b = "2026-11-10 09:05:42";
   CHECK(parseSetTime(b, strlen(b), p));
   CHECK(p.hour == 9 && p.minute == 5 && p.second == 42);
+  LocalTime y2k;
+  y2k.year = 2000, y2k.month = 1, y2k.day = 1;
+  CHECK(minutesSince2000(y2k) == 0);
+  LocalTime late, early;
+  late.year = 2026, late.month = 11, late.day = 10, late.hour = 23, late.minute = 50;
+  early.year = 2026, early.month = 11, early.day = 11, early.hour = 0, early.minute = 20;
+  CHECK(minutesSince2000(early) - minutesSince2000(late) == 30);  // across midnight
+  LocalTime leap;
+  leap.year = 2024, leap.month = 3, leap.day = 1;
+  LocalTime feb;
+  feb.year = 2024, feb.month = 2, feb.day = 28;
+  CHECK(minutesSince2000(leap) - minutesSince2000(feb) == 2 * 1440);  // Feb 29 exists
+
   const char* bad[] = {"10.11.2026", "31.02.2026 10:00", "10.11.2026 25:00", "yarın 10:00", "10/11/2026 10:00",
                        "10.11.2026 10:00 x"};
   for (const char* s : bad) CHECK(!parseSetTime(s, strlen(s), p));
@@ -430,6 +487,7 @@ int main() {
   testIdleSleep();
   testEmptyList();
   testWifiFlow();
+  testSyncLogic();
   testLibraryModel();
   testShelfLayout();
   testLibraryNavigation();

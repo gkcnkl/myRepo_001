@@ -60,6 +60,19 @@ void formatTurkishDate(const LocalTime& t, char* out, size_t outSize) {
   snprintf(out, outSize, "%s, %d %s", kDays[weekdayOf(t.year, t.month, t.day)], t.day, kMonths[t.month - 1]);
 }
 
+uint32_t minutesSince2000(const LocalTime& t) {
+  // Days from civil (Howard Hinnant), shifted to 2000-01-01.
+  int y = t.year;
+  const int m = t.month;
+  y -= m <= 2;
+  const int era = y / 400;
+  const int yoe = y - era * 400;
+  const int doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + t.day - 1;
+  const int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  const long days = static_cast<long>(era) * 146097 + doe - 730425;  // 730425 = days to 2000-01-01
+  return static_cast<uint32_t>(days * 1440 + t.hour * 60 + t.minute);
+}
+
 bool parseSetTime(const char* data, size_t len, LocalTime& out) {
   const char* p = data;
   const char* end = data + len;

@@ -316,7 +316,8 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
   }
   const char* hint = t.count == 0 ? "GERİ tazele  ·  GÜÇ uyku"
                                   : "TAMAM işaretle  ·  SAĞ odak  ·  GERİ tazele  ·  GÜÇ uyku";
-  statusBar(g, done, app.sdAvailable ? weekdayOf(app, wd, sizeof wd) : "SD kart yok", hint);
+  const char* right = !app.sdAvailable ? "SD kart yok" : app.syncNote[0] ? app.syncNote : weekdayOf(app, wd, sizeof wd);
+  statusBar(g, done, right, hint);
 }
 
 void drawFocus(Adafruit_GFX& g, const App& app, uint32_t nowMs) {
@@ -430,7 +431,9 @@ void drawWifi(Adafruit_GFX& g, const App& app) {
     drawTracked(g, &InterSemi12, e.s, (kW - w) / 2 + 12, 668, 2, 1);
   }
 
-  statusBar(g, "Geri · çık", "WI-FI açık", "10 dk kullanılmazsa kapanır");
+  statusBar(g, "Geri · çık", app.syncConfigured ? "Tamam · ev ağıyla eşitle" : "WI-FI açık",
+            app.syncConfigured ? "Eşitleme ayarlı · 10 dk kullanılmazsa kapanır"
+                               : "Eşitleme için sayfadaki Ayarlar · 10 dk sonra kapanır");
 }
 
 namespace {

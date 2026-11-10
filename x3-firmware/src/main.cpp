@@ -28,6 +28,7 @@
 #include "library.h"
 #include "reader/book_reader.h"
 #include "sd_storage.h"
+#include "sync.h"
 #include "ui.h"
 #include "webpage.h"
 
@@ -58,6 +59,8 @@ struct Resume {
   uint32_t magic;
   uint8_t screen;
   int16_t libSelected;
+  uint8_t skipSync;  // the restart came right after a sync: do not sync again
+  char note[48];     // sync status to show after the restart
 };
 RTC_NOINIT_ATTR Resume resume;
 constexpr uint32_t kResumeMagic = 0x58335253;  // "X3RS"
@@ -103,6 +106,8 @@ reader::Memory readerMem{};
 int openBookIndex = -1;
 int readerPageTurns = 0;
 bool libraryDirty = false;  // books were added/removed over Wi-Fi
+SyncSettings syncSettings;
+constexpr uint32_t kAutoSyncEveryMin = 30;
 
 // Adafruit_GFX canvas that draws straight into the SDK framebuffer
 // (792x528 native, row-major, MSB-first, 1 = white).
@@ -666,6 +671,9 @@ void handleDeleteBook() {
   server.send(ok ? 200 : 404, "text/plain; charset=utf-8", ok ? "Silindi." : "Bulunamadı.");
 }
 
+void handleGetSettings();
+void handlePostSettings();
+
 void startWifi() {
   if (wifiOn) return;
   // A fresh 8-digit password each time the hotspot opens.
@@ -684,6 +692,8 @@ void startWifi() {
   server.on("/kitaplar", HTTP_GET, handleListBooks);
   server.on("/kitap", HTTP_POST, handleUploadDone, handleUploadData);
   server.on("/kitap-sil", HTTP_POST, handleDeleteBook);
+  server.on("/ayarlar", HTTP_GET, handleGetSettings);
+  server.on("/ayarlar", HTTP_POST, handlePostSettings);
   server.onNotFound([] { server.send(404, "text/plain; charset=utf-8", "Yok"); });
   server.begin();
   wifiOn = true;
@@ -698,6 +708,75 @@ void stopWifi() {
   wifiOn = false;
   if (libraryDirty) scanLibrary();
   Serial.println("[x3] hotspot off");
+}
+
+// Wi-Fi leaves the heap fragmented and the reader needs large blocks:
+// restart cleanly and come back to the same screen.
+[[noreturn]] void restartInto(Screen screenAfter, bool afterSync, const char* note) {
+  resume.magic = kResumeMagic;
+  resume.screen = static_cast<uint8_t>(screenAfter);
+  resume.libSelected = static_cast<int16_t>(app.libSelected);
+  resume.skipSync = afterSync ? 1 : 0;
+  snprintf(resume.note, sizeof resume.note, "%s", note != nullptr ? note : "");
+  Serial.println("[x3] restarting after Wi-Fi");
+  Serial.flush();
+  esp_restart();
+}
+
+// GitHub sync over the home Wi-Fi, then a clean restart into `screenAfter`.
+[[noreturn]] void syncAndRestart(Screen screenAfter) {
+  snprintf(app.syncNote, sizeof app.syncNote, "Eşitleniyor...");
+  if (app.screen == Screen::List) render(false);
+  const SyncOutcome out = runSync(syncSettings, app.tasks, setClock);
+  Serial.printf("[x3] sync: ok=%d changed=%d clock=%d %s\n", out.ok, out.changed, out.clockSet, out.message);
+  if (out.changed) {
+    tasksPath = kBriefingPath;
+    saveTasks();
+  }
+  restartInto(screenAfter, true, out.message);
+}
+
+bool autoSyncDue() {
+  if (!syncSettings.configured()) return false;
+  const uint32_t last = lastSyncMinutes();
+  LocalTime t;
+  if (last == 0 || !currentTime(t)) return true;
+  const uint32_t nowMin = minutesSince2000(t);
+  return nowMin < last || nowMin - last >= kAutoSyncEveryMin;
+}
+
+// --- Sync settings on the transfer page ----------------------------------------
+
+void handleGetSettings() {
+  char hint[16] = "";
+  const size_t n = strlen(syncSettings.token);
+  if (n >= 4) snprintf(hint, sizeof hint, "...%s", syncSettings.token + n - 4);
+  char line[256];
+  snprintf(line, sizeof line, "%s\t%s\t%s\t%s\t%d", syncSettings.ssid, syncSettings.repo, syncSettings.branch, hint,
+           syncSettings.pass[0] ? 1 : 0);
+  server.send(200, "text/plain; charset=utf-8", line);  // never the password or the token
+}
+
+void handlePostSettings() {
+  auto take = [](const char* name, char* dst, size_t n, bool keepIfEmpty) {
+    if (!server.hasArg(name)) return;
+    const String v = server.arg(name);
+    if (v.length() == 0 && keepIfEmpty) return;
+    snprintf(dst, n, "%s", v.c_str());
+  };
+  take("ssid", syncSettings.ssid, sizeof syncSettings.ssid, false);
+  take("pass", syncSettings.pass, sizeof syncSettings.pass, true);
+  take("token", syncSettings.token, sizeof syncSettings.token, true);
+  take("repo", syncSettings.repo, sizeof syncSettings.repo, false);
+  take("branch", syncSettings.branch, sizeof syncSettings.branch, false);
+  if (server.hasArg("sil") && server.arg("sil") == "1") syncSettings = SyncSettings{};
+  saveSyncSettings(syncSettings);
+  app.syncConfigured = syncSettings.configured();
+  app.touch(millis());
+  webRedraw = true;
+  server.send(200, "text/plain; charset=utf-8",
+              app.syncConfigured ? "Kaydedildi. Cihazda GERİ ile çıkınca ya da TAMAM ile hemen eşitlenir."
+                                 : "Kaydedildi (eşitleme için Wi-Fi adı ve anahtar gerekli).");
 }
 
 [[noreturn]] void goToSleep() {
@@ -769,10 +848,12 @@ void setup() {
   clearCrumb();
   reader::setTrace(readerTrace);
   const bool resumed = reason == ESP_RST_SW && resume.magic == kResumeMagic;
-  const Resume resumeState = resume;
+  Resume resumeState = resume;
   resume.magic = 0;
 
   rtc.begin();
+  loadSyncSettings(syncSettings);
+  app.syncConfigured = syncSettings.configured();
   loadTasks();
   applySetTimeFile();
   scanLibrary();
@@ -783,9 +864,14 @@ void setup() {
       app.libSelected = resumeState.libSelected;
     }
     waitingForRelease = false;  // no wake press to swallow after a restart
+    resumeState.note[sizeof resumeState.note - 1] = '\0';
+    snprintf(app.syncNote, sizeof app.syncNote, "%s", resumeState.note);
   }
   app.lastInputMs = millis();
-  render(true, /*deepClean=*/true);
+  // After a restart the panel already shows a clean screen: skip the white pass.
+  render(true, /*deepClean=*/!resumed);
+  // Pull the latest briefing on wake when it is due (not right after a sync).
+  if (!(resumed && resumeState.skipSync) && autoSyncDue()) syncAndRestart(app.screen);
 }
 
 void loop() {
@@ -803,14 +889,10 @@ void loop() {
       if (fx.sleep) goToSleep();
       if (fx.stopWifi) {
         stopWifi();
-        // Wi-Fi leaves the heap fragmented and the reader needs large blocks:
-        // restart cleanly and come back to the same screen.
-        resume.magic = kResumeMagic;
-        resume.screen = static_cast<uint8_t>(app.screen);
-        resume.libSelected = static_cast<int16_t>(app.libSelected);
-        Serial.println("[x3] restarting after Wi-Fi");
-        Serial.flush();
-        esp_restart();
+        if (fx.syncNow) syncAndRestart(app.screen);
+        // With new settings saved, sync on the way out (the restart is needed anyway).
+        if (syncSettings.configured() && autoSyncDue()) syncAndRestart(app.screen);
+        restartInto(app.screen, false, nullptr);
       }
       if (fx.startWifi) startWifi();
       if (fx.save) saveTasks();

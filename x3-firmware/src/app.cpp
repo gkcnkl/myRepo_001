@@ -182,6 +182,12 @@ Effects App::onButton(Button b, uint32_t nowMs) {
       break;
 
     case Screen::Wifi:
+      if (b == Button::Confirm && syncConfigured) {
+        // Leave the hotspot and sync over the home Wi-Fi instead.
+        screen = Screen::List;
+        fx.stopWifi = fx.syncNow = true;
+        break;
+      }
       if (b == Button::Back) {
         screen = wifiReturn;
         if (selected >= tasks.count) selected = tasks.count > 0 ? tasks.count - 1 : 0;

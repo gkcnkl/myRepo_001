@@ -20,6 +20,7 @@ struct Effects {
   bool openBook = false;     // open app.lib.books[app.libSelected] (main may fall back)
   bool closeBook = false;    // save the position and close the reader
   int8_t pageDelta = 0;      // +1 next page, -1 previous page
+  bool syncNow = false;      // sync with GitHub over the home Wi-Fi
 };
 
 struct App {
@@ -69,6 +70,8 @@ struct App {
   char wifiPass[16] = "";
   char wifiUrl[32] = "";
   char wifiStatus[80] = "";
+  char syncNote[64] = "";  // "Eşitlendi 07:02" or why it failed (status bar)
+  bool syncConfigured = false;
 
   // Call when the web page did something, so the idle timer restarts.
   void touch(uint32_t nowMs) { lastInputMs = nowMs; }

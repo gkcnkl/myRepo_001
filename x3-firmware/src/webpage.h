@@ -34,6 +34,10 @@ input[type=file]{display:none}
 .book button{padding:8px 12px;min-height:36px;background:transparent;color:var(--ink)}
 .empty{font-size:13.5px;color:var(--muted);padding:14px 2px;border-bottom:1px solid var(--line)}
 progress{width:100%;height:6px;margin-top:12px;accent-color:var(--lila)}
+.fld{display:block;margin-top:12px}
+.fld span{display:block;font-size:9.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
+.fld input{width:100%;font:15px -apple-system,sans-serif;padding:11px 12px;background:var(--sand);border:1px solid var(--line);color:var(--ink);min-height:44px}
+.fld input:focus{outline:2px solid var(--lila);outline-offset:2px}
 .opt{font-size:13px;color:var(--ink);display:inline-flex;gap:8px;align-items:center;min-height:44px}
 .opt input{width:18px;height:18px;accent-color:var(--lila)}
 </style></head><body><div class="wrap">
@@ -41,6 +45,20 @@ progress{width:100%;height:6px;margin-top:12px;accent-color:var(--lila)}
 <h1>Aktarım</h1>
 <div class="rule"></div>
 <div class="dateline" id="clock">Saat ayarlanıyor…</div>
+
+<div class="sec">
+<h2>Eşitleme</h2><div class="hr"></div>
+<div class="note" id="syncinfo">Yükleniyor…</div>
+<form id="sf">
+<label class="fld"><span>EV WI-FI ADI</span><input name="ssid" id="s_ssid" autocomplete="off"></label>
+<label class="fld"><span>EV WI-FI ŞİFRESİ</span><input name="pass" type="password" id="s_pass" placeholder="değiştirmek için yaz" autocomplete="new-password"></label>
+<label class="fld"><span>GITHUB ERİŞİM ANAHTARI</span><input name="token" type="password" id="s_token" placeholder="değiştirmek için yaz" autocomplete="off"></label>
+<label class="fld"><span>Depo</span><input name="repo" id="s_repo" placeholder="gkcnkl/x3-sync" autocomplete="off"></label>
+<label class="fld"><span>Dal</span><input name="branch" id="s_branch" placeholder="main" autocomplete="off"></label>
+<div class="row"><button type="submit">Kaydet</button><span class="pill" id="sst" hidden></span></div>
+</form>
+<div class="note">Cihaz uyanınca (en çok yarım saatte bir) ev Wi-Fi'ına bağlanır, depodaki <code>brifing.txt</code>'yi alır, tamamladığın görevleri <code>cihaz.txt</code> olarak geri yazar ve saati internetten ayarlar. Anahtar yalnız bu depoya, yalnız "Contents" izniyle olmalı; cihaz onu hiçbir zaman geri göstermez.</div>
+</div>
 
 <div class="sec">
 <h2>Kitaplar</h2><div class="hr"></div>
@@ -194,6 +212,26 @@ function upload(files,i){
 }
 document.getElementById('bf').onchange=function(e){upload(e.target.files,0);e.target.value=''};
 loadBooks();
+var sst=document.getElementById('sst'),si=document.getElementById('syncinfo');
+function sshow(m){sst.textContent=m;sst.hidden=false}
+function loadSettings(){
+  fetch('/ayarlar').then(function(r){return r.text()}).then(function(x){
+    var c=x.split('\t');
+    document.getElementById('s_ssid').value=c[0]||'';
+    document.getElementById('s_repo').value=c[1]||'';
+    document.getElementById('s_branch').value=c[2]||'';
+    si.textContent=c[3]?('Anahtar kayıtlı ('+c[3]+')'+(c[4]==='1'?' · Wi-Fi şifresi kayıtlı':'')):'Eşitleme henüz ayarlanmadı.';
+  }).catch(function(){si.textContent='Ayarlar okunamadı.'});
+}
+document.getElementById('sf').onsubmit=function(e){
+  e.preventDefault();
+  var body=new URLSearchParams(new FormData(e.target));
+  sshow('Kaydediliyor…');
+  fetch('/ayarlar',{method:'POST',body:body}).then(function(r){return r.text()}).then(function(m){
+    sshow(m);document.getElementById('s_pass').value='';document.getElementById('s_token').value='';loadSettings();
+  }).catch(function(){sshow('Kaydedilemedi')});
+};
+loadSettings();
 document.getElementById('f').onchange=function(e){
   var file=e.target.files[0];if(!file)return;
   var rd=new FileReader();rd.onload=function(){t.value=rd.result;show('Dosya yüklendi, Kaydet’e bas')};rd.readAsText(file,'utf-8');

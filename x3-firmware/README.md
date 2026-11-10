@@ -32,6 +32,26 @@ güncellenir. Uykuda ekranda bir kütüphane ödünç kartı durur.
 
 Tuşların cihazdaki yerleri: [docs-hardware.md](docs-hardware.md).
 
+## GitHub ile eşitleme (Sabah Brifingi)
+
+Cihaz uyanınca (son eşitlemeden en az 30 dakika geçtiyse) ya da Wi-Fi
+ekranında TAMAM'a basınca ev Wi-Fi'ına bağlanır ve özel bir GitHub deposuyla
+eşitlenir:
+
+- `brifing.txt` (Sabah Brifingi rutini yazar) indirilir; cihazda tamamlanan
+  görevler (aynı saat + metin) yeni listede de tamamlanmış kalır.
+- `cihaz.txt` (cihazın gördüğü liste ve işaretler) değiştiyse geri yazılır;
+  rutin bir sonraki tazelemede bunu okur.
+- Saat NTP'den ayarlanır (UTC+3).
+- Bağlantı GitHub'ın kök sertifikalarıyla doğrulanır (`src/github_roots.h`).
+
+Kurulum: GitHub'da özel bir depo (ör. `gkcnkl/x3-sync`) ve yalnız o depoya
+"Contents: Read and write" izni olan bir fine-grained anahtar. Wi-Fi aktarım
+sayfasındaki **Eşitleme** bölümüne ev Wi-Fi adı/şifresi, anahtar, depo ve dal
+girilir; cihaz şifreyi ve anahtarı geri göstermez. Eşitlemeden sonra cihaz
+kendini yeniden başlatır (okuyucu için temiz heap); durum alt çubukta yazar
+("EŞİTLENDİ 07:02" ya da hata).
+
 ## Kitaplık ve okuyucu
 
 - Raf: kitapların sırtları yan yana, başlık sırtta aşağıdan yukarıya. Sırt
@@ -105,10 +125,10 @@ biçim anlaşılmamıştır (`2026-11-10 15:30` biçimi de kabul edilir).
 
 ## Hazır imajı yükleme (Windows)
 
-`release/x3-bugun-v0.9.8.bin` dosyasını esptool klasörüne kopyala, sonra:
+`release/x3-bugun-v0.10.0.bin` dosyasını esptool klasörüne kopyala, sonra:
 
 ```bash
-esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.9.8.bin
+esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.10.0.bin
 ```
 
 ## Fabrika firmware'ine dönüş
@@ -142,6 +162,7 @@ sayfa ~400 ister, `FREEINK_BOOK_MAX_RUNS_PER_PAGE=448`). Betik tekrar
 - `src/reader/` — okuma motoru bağlantısı (FreeInkBook, düşük bellek profili),
   gömülü Literata fontları ve Türkçe heceleme (`tools/fontgen/build_book_fonts.sh`)
 - `src/sd_storage.h` — kitap ve sayfa önbelleği için SD adaptörleri
+- `src/sync.cpp` — GitHub eşitlemesi (Wi-Fi, NTP, HTTPS); `src/sync_logic.cpp` — birleştirme, base64, JSON
 - Okuyucu simülatörü (PC'de gerçek bir kitabı cihazdaki gibi sayfalar):
   `tools/reader-sim/build.sh /tmp/rs && /tmp/rs/reader-sim kitap.epub /tmp/rs/cache /tmp/rs/out 5`
 - `src/fonts/` — Inter ve Playfair Display (SIL OFL 1.1) ile üretildi: `tools/fontgen/build_fonts.sh`

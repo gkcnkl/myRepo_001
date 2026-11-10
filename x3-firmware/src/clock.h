@@ -22,6 +22,9 @@ bool isPlausible(const LocalTime& t);
 // "Salı, 10 Kasım" (UTF-8). Empty string when the date is not plausible.
 void formatTurkishDate(const LocalTime& t, char* out, size_t outSize);
 
+// Minutes since 2000-01-01 00:00 (for "how long since the last sync").
+uint32_t minutesSince2000(const LocalTime& t);
+
 // Parses the /saat.txt content: "10.11.2026 15:30" or "2026-11-10 15:30"
 // (seconds optional, surrounding whitespace / BOM ignored).
 bool parseSetTime(const char* data, size_t len, LocalTime& out);
