@@ -302,24 +302,11 @@ void freeReaderMemory() {
 
 char memoryNote[64] = "";  // what did not fit, shown on the shelf
 
-// Tries `spec.preferred`, then smaller steps down to `spec.minimum`.
-uint8_t* allocStepDown(const reader::ArenaSpec& spec, size_t& got) {
-  for (size_t size = spec.preferred; size >= spec.minimum; size -= 1024) {
-    auto* p = static_cast<uint8_t*>(heap_caps_malloc(size, MALLOC_CAP_8BIT));
-    if (p != nullptr) {
-      got = size;
-      return p;
-    }
-    if (size < spec.minimum + 1024) break;
-  }
-  got = 0;
-  return nullptr;
-}
-
 bool allocReaderMemory() {
-  const unsigned freeKb = heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024;
+  const size_t freeBytes = heap_caps_get_free_size(MALLOC_CAP_8BIT);
   const unsigned largestKb = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024;
-  Serial.printf("[x3] reader alloc: heap free %u KB, largest block %u KB\n", freeKb, largestKb);
+  Serial.printf("[x3] reader alloc: heap free %u KB, largest block %u KB\n", static_cast<unsigned>(freeBytes / 1024),
+                largestKb);
   // The two layout arenas share the largest block (measured: 111 KB).
   readerMem.big = static_cast<uint8_t*>(heap_caps_malloc(reader::kBigBlock, MALLOC_CAP_8BIT));
   if (readerMem.big == nullptr) {
@@ -327,7 +314,9 @@ bool allocReaderMemory() {
              static_cast<unsigned>(reader::kBigBlock / 1024), largestKb);
     return false;
   }
-  // Small arenas, largest first, each stepping down if the heap is tight.
+
+  // Plan the small arenas inside a budget that leaves kHeapReserve free for
+  // expat and the rasterizer: every minimum first, then extras by priority.
   struct Item {
     const char* name;
     const reader::ArenaSpec* spec;
@@ -336,15 +325,47 @@ bool allocReaderMemory() {
   } items[] = {
       {"katalog", &reader::kBookArena, &readerMem.book, &readerMem.bookSize},
       {"font", &reader::kGlyphArena, &readerMem.glyph, &readerMem.glyphSize},
-      {"kalın font", &reader::kBoldGlyphArena, &readerMem.bold, &readerMem.boldSize},
       {"dizin", &reader::kIndexArena, &readerMem.index, &readerMem.indexSize},
+      {"kalın font", &reader::kBoldGlyphArena, &readerMem.bold, &readerMem.boldSize},
       {"css", &reader::kSheetArena, &readerMem.sheet, &readerMem.sheetSize},
   };
-  for (Item& it : items) {
-    *it.ptr = allocStepDown(*it.spec, *it.size);
-    if (*it.ptr == nullptr) {
-      snprintf(memoryNote, sizeof memoryNote, "%s için %u KB yok (en büyük %u KB)", it.name,
-               static_cast<unsigned>(it.spec->minimum / 1024),
+  const size_t afterBig = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  size_t budget = afterBig > reader::kHeapReserve ? afterBig - reader::kHeapReserve : 0;
+  size_t plan[5];
+  for (int i = 0; i < 5; ++i) {
+    plan[i] = items[i].spec->minimum;
+    if (plan[i] > budget) {
+      snprintf(memoryNote, sizeof memoryNote, "%s için yer yok (boş %u KB)", items[i].name,
+               static_cast<unsigned>(afterBig / 1024));
+      freeReaderMemory();
+      return false;
+    }
+    budget -= plan[i];
+  }
+  // Extras: glyph cache (page speed), catalog, index, real bold, CSS.
+  const int priority[] = {1, 0, 2, 3, 4};
+  for (int i : priority) {
+    const size_t want = items[i].spec->preferred - plan[i];
+    // An optional arena is all-or-nothing above a useful size (6 KB bold).
+    if (items[i].spec->minimum == 0 && want > budget && budget < 6 * 1024) continue;
+    const size_t extra = want < budget ? want : budget;
+    plan[i] += extra;
+    budget -= extra;
+  }
+  for (int i = 0; i < 5; ++i) {
+    if (plan[i] == 0) continue;
+    // Fragmentation: step down 1 KB at a time (to the minimum) if needed.
+    for (size_t size = plan[i];; size -= 1024) {
+      *items[i].ptr = static_cast<uint8_t*>(heap_caps_malloc(size, MALLOC_CAP_8BIT));
+      if (*items[i].ptr != nullptr) {
+        *items[i].size = size;
+        break;
+      }
+      if (size < items[i].spec->minimum + 1024 || size <= 1024) break;
+    }
+    if (*items[i].ptr == nullptr && items[i].spec->minimum > 0) {
+      snprintf(memoryNote, sizeof memoryNote, "%s için %u KB yok (en büyük %u KB)", items[i].name,
+               static_cast<unsigned>(items[i].spec->minimum / 1024),
                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024));
       freeReaderMemory();
       return false;

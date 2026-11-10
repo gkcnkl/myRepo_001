@@ -34,6 +34,8 @@ input[type=file]{display:none}
 .book button{padding:8px 12px;min-height:36px;background:transparent;color:var(--ink)}
 .empty{font-size:13.5px;color:var(--muted);padding:14px 2px;border-bottom:1px solid var(--line)}
 progress{width:100%;height:6px;margin-top:12px;accent-color:var(--lila)}
+.opt{font-size:13px;color:var(--ink);display:inline-flex;gap:8px;align-items:center;min-height:44px}
+.opt input{width:18px;height:18px;accent-color:var(--lila)}
 </style></head><body><div class="wrap">
 <div class="eyebrow">XTEINK X3 · WI-FI AKTARIM</div>
 <h1>Aktarım</h1>
@@ -45,10 +47,11 @@ progress{width:100%;height:6px;margin-top:12px;accent-color:var(--lila)}
 <div id="books"><div class="empty">Yükleniyor…</div></div>
 <div class="row">
 <label class="file">Kitap ekle<input type="file" id="bf" accept=".epub,.txt,application/epub+zip,text/plain" multiple></label>
+<label class="opt"><input type="checkbox" id="fit" checked> Cihaza uygun hale getir</label>
 <span class="pill" id="bst" hidden></span>
 </div>
 <progress id="bp" max="100" value="0" hidden></progress>
-<div class="note">EPUB (DRM'siz) ya da TXT. Kitaplar SD karttaki <code>/kitaplar</code> klasörüne yazılır; cihazda rafta görünür.</div>
+<div class="note">EPUB (DRM'siz) ya da TXT. "Cihaza uygun hale getir" EPUB'ı yüklemeden önce bu tarayıcıda düzenler: gömülü fontları siler, resimleri ekran boyutuna (528×792) küçültüp gri tonlu yapar. Kitaplar SD karttaki <code>/kitaplar</code> klasörüne yazılır.</div>
 </div>
 
 <div class="sec">
@@ -62,6 +65,85 @@ progress{width:100%;height:6px;margin-top:12px;accent-color:var(--lila)}
 <div class="note">Kaydedince cihaz dosyayı SD karta yazar ve ekranı yeniler. Biçim: <code>[x] 09:15-10:00 | Görev</code>, <code>## Bölüm</code>, <code>gosterge: Etiket | Değer | Ayrıntı</code>.</div>
 </div>
 </div>
+<script>
+// EPUB optimizer for the X3, all in the browser (the hotspot has no internet,
+// so no libraries): ZIP read/write with the native (De)CompressionStream.
+window.x3Optimize = (function(){
+  var MAXW = 528, MAXH = 792;
+  var crcTable = (function(){var t=new Uint32Array(256);for(var n=0;n<256;n++){var c=n;for(var k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+  function crc32(b){var c=0xFFFFFFFF;for(var i=0;i<b.length;i++)c=crcTable[(c^b[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+  function pipe(bytes, stream){return new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer().then(function(a){return new Uint8Array(a)})}
+  function readZip(buf){
+    var d=new DataView(buf), u8=new Uint8Array(buf), e=-1;
+    for(var i=buf.byteLength-22;i>=Math.max(0,buf.byteLength-65557);i--){if(d.getUint32(i,true)===0x06054b50){e=i;break}}
+    if(e<0)throw new Error('ZIP değil');
+    var n=d.getUint16(e+10,true), p=d.getUint32(e+16,true), out=[], dec=new TextDecoder();
+    for(var k=0;k<n;k++){
+      if(d.getUint32(p,true)!==0x02014b50)throw new Error('ZIP dizini bozuk');
+      var method=d.getUint16(p+10,true), csize=d.getUint32(p+20,true), nlen=d.getUint16(p+28,true),
+          xlen=d.getUint16(p+30,true), clen=d.getUint16(p+32,true), off=d.getUint32(p+42,true);
+      var name=dec.decode(u8.subarray(p+46,p+46+nlen));
+      var start=off+30+d.getUint16(off+26,true)+d.getUint16(off+28,true);
+      out.push({name:name, method:method, data:u8.subarray(start,start+csize)});
+      p+=46+nlen+xlen+clen;
+    }
+    return out;
+  }
+  function inflate(en){return en.method===0?Promise.resolve(en.data):pipe(en.data,new DecompressionStream('deflate-raw'))}
+  function shrinkImage(bytes, name){
+    var png=/\.png$/i.test(name), type=png?'image/png':'image/jpeg';
+    return createImageBitmap(new Blob([bytes])).then(function(img){
+      var s=Math.min(1, MAXW/img.width, MAXH/img.height), w=Math.max(1,Math.round(img.width*s)), h=Math.max(1,Math.round(img.height*s));
+      var c=document.createElement('canvas');c.width=w;c.height=h;
+      var g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,w,h);g.filter='grayscale(1)';g.drawImage(img,0,0,w,h);
+      return new Promise(function(res){c.toBlob(res,type,0.75)});
+    }).then(function(b){return b.arrayBuffer()}).then(function(a){
+      var r=new Uint8Array(a);return r.length<bytes.length?r:bytes;
+    }).catch(function(){return bytes});
+  }
+  var FONT=/\.(ttf|otf|woff2?|eot)$/i, IMG=/\.(jpe?g|png)$/i;
+  function writeZip(entries){
+    var parts=[], central=[], off=0, enc=new TextEncoder();
+    entries.forEach(function(en){
+      var name=enc.encode(en.name), h=new DataView(new ArrayBuffer(30));
+      h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,en.method,true);
+      h.setUint16(12,0x21,true);h.setUint32(14,en.crc,true);h.setUint32(18,en.comp.length,true);h.setUint32(22,en.size,true);h.setUint16(26,name.length,true);
+      var c=new DataView(new ArrayBuffer(46));
+      c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(10,en.method,true);
+      c.setUint16(14,0x21,true);c.setUint32(16,en.crc,true);c.setUint32(20,en.comp.length,true);c.setUint32(24,en.size,true);c.setUint16(28,name.length,true);c.setUint32(42,off,true);
+      parts.push(new Uint8Array(h.buffer),name,en.comp);central.push(new Uint8Array(c.buffer),name);
+      off+=30+name.length+en.comp.length;
+    });
+    var csize=central.reduce(function(a,b){return a+b.length},0), e=new DataView(new ArrayBuffer(22));
+    e.setUint32(0,0x06054b50,true);e.setUint16(8,entries.length,true);e.setUint16(10,entries.length,true);e.setUint32(12,csize,true);e.setUint32(16,off,true);
+    return new Blob(parts.concat(central,[new Uint8Array(e.buffer)]),{type:'application/epub+zip'});
+  }
+  return function(file, progress){
+    if(!('DecompressionStream' in window)||!('CompressionStream' in window))return Promise.reject(new Error('Bu tarayıcı desteklemiyor'));
+    return file.arrayBuffer().then(function(buf){
+      var list=readZip(buf).filter(function(en){return !/\/$/.test(en.name)&&!FONT.test(en.name)});
+      var done=0;
+      return Promise.all(list.map(function(en){
+        return inflate(en).then(function(raw){
+          if(IMG.test(en.name))return shrinkImage(raw,en.name);
+          if(/\.css$/i.test(en.name))return new TextEncoder().encode(new TextDecoder().decode(raw).replace(/@font-face\s*\{[^}]*\}/gi,''));
+          if(/\.opf$/i.test(en.name))return new TextEncoder().encode(new TextDecoder().decode(raw).replace(/<item\b[^>]*href="[^"]*\.(ttf|otf|woff2?|eot)"[^>]*\/>/gi,''));
+          return raw;
+        }).then(function(data){
+          var store=en.name==='mimetype'||IMG.test(en.name);
+          return (store?Promise.resolve(data):pipe(data,new CompressionStream('deflate-raw'))).then(function(comp){
+            if(progress)progress(++done/list.length);
+            return {name:en.name, method:store?0:8, size:data.length, crc:crc32(data), comp:store?data:comp};
+          });
+        });
+      })).then(function(entries){
+        entries.sort(function(a,b){return a.name==='mimetype'?-1:b.name==='mimetype'?1:0});
+        return writeZip(entries);
+      });
+    });
+  };
+})();
+</script>
 <script>
 (function(){
 var t=document.getElementById('t'),st=document.getElementById('st'),ck=document.getElementById('clock');
@@ -91,14 +173,24 @@ books.onclick=function(e){
   if(!confirm(n+' silinsin mi?'))return;
   fetch('/kitap-sil',{method:'POST',body:n}).then(function(r){return r.text()}).then(function(m){bshow(m);loadBooks()});
 };
-function upload(files,i){
-  if(i>=files.length){bp.hidden=true;loadBooks();return}
-  var f=files[i],fd=new FormData();fd.append('kitap',f,f.name);
+function kb(n){return n<1048576?Math.round(n/1024)+' KB':(n/1048576).toFixed(1)+' MB'}
+function send(blob,name,next){
+  var fd=new FormData();fd.append('kitap',blob,name);
   var x=new XMLHttpRequest();x.open('POST','/kitap');
   x.upload.onprogress=function(e){if(e.lengthComputable){bp.value=e.loaded*100/e.total}};
-  x.onload=function(){bshow(x.responseText);upload(files,i+1)};
-  x.onerror=function(){bshow(f.name+' yüklenemedi');bp.hidden=true};
-  bp.hidden=false;bp.value=0;bshow((i+1)+'/'+files.length+' · '+f.name);x.send(fd);
+  x.onload=function(){bshow(x.responseText);next()};
+  x.onerror=function(){bshow(name+' yüklenemedi');bp.hidden=true};
+  x.send(fd);
+}
+function upload(files,i){
+  if(i>=files.length){bp.hidden=true;loadBooks();return}
+  var f=files[i],next=function(){upload(files,i+1)};
+  bp.hidden=false;bp.value=0;bshow((i+1)+'/'+files.length+' · '+f.name);
+  if(!document.getElementById('fit').checked||!/\.epub$/i.test(f.name)){send(f,f.name,next);return}
+  bshow('Hazırlanıyor · '+f.name);
+  x3Optimize(f,function(p){bp.value=p*100}).then(function(b){
+    bshow(f.name+': '+kb(f.size)+' → '+kb(b.size));send(b,f.name,next);
+  }).catch(function(err){bshow('Dönüştürülemedi ('+err.message+'), olduğu gibi yükleniyor');send(f,f.name,next)});
 }
 document.getElementById('bf').onchange=function(e){upload(e.target.files,0);e.target.value=''};
 loadBooks();

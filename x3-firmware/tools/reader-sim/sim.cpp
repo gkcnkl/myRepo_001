@@ -15,6 +15,11 @@
 
 static uint8_t fb[528 * 99];
 
+#ifdef HEAPTRACK
+extern "C" void heaptrack_start(void);
+extern "C" size_t heaptrack_peak(void);
+#endif
+
 // Same framebuffer canvas as the device (rotation 3 = upright portrait).
 class Canvas : public Adafruit_GFX {
  public:
@@ -101,6 +106,7 @@ int main(int argc, char** argv) {
   const bool isText = strstr(argv[1], ".txt") != nullptr;
   // Same arenas as the device; "min" as 5th argument uses every minimum size.
   const bool useMin = argc > 5 && strcmp(argv[5], "min") == 0;
+  // "min" = the tightest the device may get: minimums, optional arenas absent.
   auto pick = [useMin](const reader::ArenaSpec& a) { return useMin ? a.minimum : a.preferred; };
   std::vector<uint8_t> big(reader::kBigBlock), b(pick(reader::kBookArena)), gl(pick(reader::kGlyphArena)),
       bo(pick(reader::kBoldGlyphArena)), ix(pick(reader::kIndexArena)), sh(pick(reader::kSheetArena));
@@ -108,11 +114,14 @@ int main(int argc, char** argv) {
   mem.big = big.data();
   mem.book = b.data(), mem.bookSize = b.size();
   mem.glyph = gl.data(), mem.glyphSize = gl.size();
-  mem.bold = bo.data(), mem.boldSize = bo.size();
+  mem.bold = bo.empty() ? nullptr : bo.data(), mem.boldSize = bo.size();
   mem.index = ix.data(), mem.indexSize = ix.size();
-  mem.sheet = sh.data(), mem.sheetSize = sh.size();
+  mem.sheet = sh.empty() ? nullptr : sh.data(), mem.sheetSize = sh.size();
   Canvas canvas;
   reader::BookReader r;
+#ifdef HEAPTRACK
+  heaptrack_start();
+#endif
   const reader::OpenResult res = r.open(src, cache, isText, mem);
   printf("open: %d  title=\"%s\" author=\"%s\" lang=%s chapters=%u pages(ch0)=%u\n", static_cast<int>(res), r.title(),
          r.author(), r.language(), r.chapterCount(), r.chapterPages());
@@ -132,6 +141,9 @@ int main(int argc, char** argv) {
   size_t hw[7], cap[7];
   r.memoryReport(hw, cap);
   const char* names[7] = {"book", "scratch", "glyph", "bold", "index", "css", "parse"};
+#ifdef HEAPTRACK
+  printf("heap outside arenas (expat etc.), peak: %zu B\n", heaptrack_peak());
+#endif
   printf("high water:");
   for (int i = 0; i < 7; ++i) printf(" %s %zu/%zu", names[i], hw[i], cap[i]);
   printf("\n");

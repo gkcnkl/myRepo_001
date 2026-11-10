@@ -19,12 +19,15 @@
 
 ## Bellek (PSRAM yok)
 
-Cihazda ölçülen (okuyucu açılmadan önce): boş heap 157-161 KB, en büyük blok
-111 KB; geri kalanı daha küçük bölgelere dağınık. Bu yüzden okuyucu:
+Cihazda ölçülen (okuyucu açılmadan önce): boş heap ~161 KB, en büyük blok
+111 KB; geri kalanı daha küçük bölgelere dağınık. XML ayrıştırıcı (expat) ve
+glif çizici arenaların dışında, genel heap'ten ~20 KB'a kadar bellek ister
+(bilgisayarda ölçüm: 29 KB, dosya tamponları dahil). Bu yüzden okuyucu:
 - sayfalama (56 KB) + ayrıştırma (50 KB) alanlarını tek 106 KB blokta alır
   (ölçülen tepe: 52 KB + 46 KB, Dubliners 290 sayfa),
-- küçük alanları önce tercih edilen, sığmazsa daha küçük boyutla ister:
-  katalog 16→9 KB, font 12→7 KB, kalın font 8→6 KB, dizin 6→3 KB, CSS 2→0,5 KB.
-Toplam 150 KB (en iyi) ile 131 KB (en sıkışık) arası; kitap kapanınca hepsi
-bırakılır. Yetmezse rafta hangi alanın sığmadığı yazar. Loop yığını 16 KB.
-Wi-Fi'dan çıkınca cihaz kendini yeniden başlatır (temiz heap).
+- küçük alanları 28 KB'lık genel heap payı bırakacak bütçeyle planlar:
+  önce zorunlu en küçükler (katalog 8, font 6, dizin 2 KB), sonra öncelikle
+  font 12, katalog 16, dizin 6, gerçek kalın font 8 (yoksa çift baskı),
+  CSS 2 KB (yoksa kitabın CSS'i atlanır).
+Kitap kapanınca hepsi bırakılır. Loop yığını 16 KB. Wi-Fi'dan çıkınca cihaz
+kendini yeniden başlatır (temiz heap).

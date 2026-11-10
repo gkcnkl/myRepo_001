@@ -29,6 +29,7 @@ constexpr int16_t kMarginX = 30;
 constexpr int16_t kMarginTop = 30;
 // Bump when anything that changes page layout changes (fonts, metrics).
 constexpr uint32_t kFontFingerprint = 0x4C495431u /* "LIT1" */ ^ (kBodySizePx << 8);
+constexpr uint32_t kSyntheticBold = 0x80000000u;  // fingerprint bit: no real bold face
 
 TraceFn gTrace = nullptr;
 char gError[64] = "";  // why the last open/chapter failed, for the shelf
@@ -118,9 +119,11 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
   m.parse.init(mem.big + kScratchArena, kParseArena);
   m.bookArena.init(mem.book, mem.bookSize);
   m.glyphArena.init(mem.glyph, mem.glyphSize);
-  m.boldGlyphArena.init(mem.bold, mem.boldSize);
+  const bool haveBold = mem.bold != nullptr && mem.boldSize > 0;
+  const bool haveSheet = mem.sheet != nullptr && mem.sheetSize > 0;
+  if (haveBold) m.boldGlyphArena.init(mem.bold, mem.boldSize);
   m.indexArena.init(mem.index, mem.indexSize);
-  m.sheetArena.init(mem.sheet, mem.sheetSize);
+  if (haveSheet) m.sheetArena.init(mem.sheet, mem.sheetSize);
 
   const char* lang = "tr";
   if (!isText) {
@@ -139,24 +142,24 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
     if (m.book.metadata().language[0] != '\0') lang = m.book.metadata().language;
 
     CssStylesheetBuilder builder;
-    builder.begin(m.sheetArena);
+    if (haveSheet) builder.begin(m.sheetArena);
     for (size_t i = 0; i < m.book.manifestCount(); ++i) {
       const ManifestItem* item = m.book.manifestItem(i);
-      if (item->mediaType == nullptr || strcmp(item->mediaType, "text/css") != 0) continue;
+      if (!haveSheet || item->mediaType == nullptr || strcmp(item->mediaType, "text/css") != 0) continue;
       const ZipEntry* entry = m.book.zip().find(item->href);
       if (entry != nullptr) builder.addSheet(source, *entry, m.parse);
       m.parse.reset();
     }
-    m.sheet = builder.finish();
+    if (haveSheet) m.sheet = builder.finish();
   }
 
   if (!m.regular.init(kLiterataRegular, kLiterataRegular_size, m.glyphArena) ||
-      !m.bold.init(kLiterataBold, kLiterataBold_size, m.boldGlyphArena)) {
+      (haveBold && !m.bold.init(kLiterataBold, kLiterataBold_size, m.boldGlyphArena))) {
     fail("font yüklenemedi");
     return OpenResult::Broken;
   }
   m.fonts.add(&m.regular, freeink::font::StyleNone);
-  m.fonts.add(&m.bold, freeink::font::StyleBold);
+  if (haveBold) m.fonts.add(&m.bold, freeink::font::StyleBold);
 
   if (startsWithLang(lang, "tr")) {
     m.hyphenator.init(freeink::book::k_hyph_tr, freeink::book::k_hyph_tr_size);
@@ -175,9 +178,9 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
   lp.font = &m.fonts;
   lp.lineSpacingPct = 112;
   lp.defaultAlign = TextAlign::Justify;
-  lp.stylesheet = isText ? nullptr : &m.sheet;
+  lp.stylesheet = isText || !haveSheet ? nullptr : &m.sheet;
   lp.hyphenator = m.hyphenator.ready() ? &m.hyphenator : nullptr;
-  m.generation = layoutGenerationHash(lp, kFontFingerprint);
+  m.generation = layoutGenerationHash(lp, kFontFingerprint ^ (haveBold ? 0u : kSyntheticBold));
 
   spineCount_ = isText ? 1 : static_cast<uint16_t>(m.book.spineCount());
   open_ = true;

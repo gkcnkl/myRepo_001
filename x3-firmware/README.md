@@ -54,6 +54,11 @@ her seferinde yeni, ekranda yazar) ve bir QR kod gösterir:
 2. Tarayıcıda `http://192.168.4.1` adresini aç.
 3. Sayfa açılınca cihazın saati telefonun saatiyle ayarlanır.
 4. **Kitaplar**: "Kitap ekle" ile bir ya da birkaç EPUB/TXT yükle, istemediğini sil.
+   "Cihaza uygun hale getir" (varsayılan açık) EPUB'ı yüklemeden önce tarayıcıda
+   düzenler: gömülü fontları ve `@font-face` tanımlarını siler, resimleri en çok
+   528×792'ye küçültüp gri tonlu yapar, EPUB kurallarına uygun yeniden paketler
+   (Dubliners: 2,9 MB → 249 KB). İnternet gerekmez (tarayıcının kendi
+   CompressionStream/DecompressionStream'i).
 5. `brifing.txt` içeriğini düzenle, yapıştır ya da dosyadan yükle; **Kaydet**.
    Cihaz SD karta yazar ve ekranı yeniler.
 
@@ -100,10 +105,10 @@ biçim anlaşılmamıştır (`2026-11-10 15:30` biçimi de kabul edilir).
 
 ## Hazır imajı yükleme (Windows)
 
-`release/x3-bugun-v0.9.5.bin` dosyasını esptool klasörüne kopyala, sonra:
+`release/x3-bugun-v0.9.6.bin` dosyasını esptool klasörüne kopyala, sonra:
 
 ```bash
-esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.9.5.bin
+esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.9.6.bin
 ```
 
 ## Fabrika firmware'ine dönüş

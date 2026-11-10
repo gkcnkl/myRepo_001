@@ -29,18 +29,23 @@ constexpr size_t kBigBlock = kScratchArena + kParseArena;  // one allocation, sp
 
 struct ArenaSpec {
   size_t preferred;
-  size_t minimum;
+  size_t minimum;  // 0 = optional: the reader works without it
 };
+// The XML parser (expat) and the glyph rasterizer allocate from the general
+// heap, ~20 KB at peak on the device: arenas must leave at least this free.
+constexpr size_t kHeapReserve = 28 * 1024;
 // ZIP catalog, OPF, spine, TOC (Dubliners: 7.5 KB).
-constexpr ArenaSpec kBookArena{16 * 1024, 9 * 1024};
-// Glyph caches: ~5 KB of fixed tables per face (FREEINK_FONT_ADVANCE_SLOTS=256,
-// FREEINK_FONT_GLYPH_SLOTS=64 in the build), the rest caches bitmaps and
+constexpr ArenaSpec kBookArena{16 * 1024, 8 * 1024};
+// Glyph caches: ~2.5 KB of fixed tables per face (FREEINK_FONT_ADVANCE_SLOTS=128,
+// FREEINK_FONT_GLYPH_SLOTS=48 in the build); the rest caches bitmaps and
 // flushes when full.
-constexpr ArenaSpec kGlyphArena{12 * 1024, 7 * 1024};
-constexpr ArenaSpec kBoldGlyphArena{8 * 1024, 6 * 1024};
-// Open chapter's page index, ~8 B/page: 6 KB ~750 pages, 3 KB ~380 pages.
-constexpr ArenaSpec kIndexArena{6 * 1024, 3 * 1024};
-constexpr ArenaSpec kSheetArena{2 * 1024, 512};  // book CSS (oversized sheets are skipped)
+constexpr ArenaSpec kGlyphArena{12 * 1024, 6 * 1024};
+// Real bold face for headings; without it bold is drawn as a double strike.
+constexpr ArenaSpec kBoldGlyphArena{8 * 1024, 0};
+// Open chapter's page index, ~8 B/page: 6 KB ~750 pages, 2 KB ~250 pages.
+constexpr ArenaSpec kIndexArena{6 * 1024, 2 * 1024};
+// Book CSS (oversized sheets are skipped); without it the reader's own styles apply.
+constexpr ArenaSpec kSheetArena{2 * 1024, 0};
 
 struct Memory {
   uint8_t* big = nullptr;  // kBigBlock bytes: scratch then parse
