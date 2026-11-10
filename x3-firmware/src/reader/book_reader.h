@@ -63,6 +63,8 @@ constexpr uint32_t kMaxImageBytes = 200 * 1024;
 // name ("katalog", "bolum", "sayfa") and a number (chapter or page index).
 using TraceFn = void (*)(const char* step, int value);
 void setTrace(TraceFn fn);
+// Why the last open or chapter layout failed ("sayfalama: OutOfMemory"), or "".
+const char* lastError();
 
 struct Position {
   uint16_t spine = 0;

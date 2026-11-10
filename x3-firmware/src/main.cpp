@@ -436,6 +436,8 @@ bool openSelectedBook() {
     freeReaderMemory();
     if (strcmp(error, "Bellek yetmedi") == 0) {
       snprintf(app.libStatus, sizeof app.libStatus, "Bellek: %s", memoryNote);
+    } else if (reader::lastError()[0]) {
+      snprintf(app.libStatus, sizeof app.libStatus, "%s (%s)", error, reader::lastError());
     } else {
       snprintf(app.libStatus, sizeof app.libStatus, "%s", error);
     }

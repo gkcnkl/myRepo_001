@@ -48,7 +48,7 @@ struct App {
   int libSelected = 0;
   int shelfScroll = 0;  // first visible shelf
   Screen wifiReturn = Screen::List;  // where BACK on the Wi-Fi screen goes
-  char libStatus[64] = "";  // e.g. "Kitap açılamadı"
+  char libStatus[112] = "";  // e.g. "Kitap okunamadı (sayfalama: OutOfMemory)"
 
   int focusTask = -1;
   uint32_t focusStartMs = 0;

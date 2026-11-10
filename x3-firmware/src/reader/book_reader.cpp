@@ -8,6 +8,7 @@
 #include <layout/ChapterLayout.h>
 #include <render/PageRenderer.h>
 #include <render/TtfFont.h>
+#include <stdio.h>
 #include <string.h>
 #include <text/Hyphenator.h>
 #include <text/hyph_en_us.h>
@@ -30,6 +31,13 @@ constexpr int16_t kMarginTop = 30;
 constexpr uint32_t kFontFingerprint = 0x4C495431u /* "LIT1" */ ^ (kBodySizePx << 8);
 
 TraceFn gTrace = nullptr;
+char gError[64] = "";  // why the last open/chapter failed, for the shelf
+
+bool fail(const char* what, BookStatus st = BookStatus::Ok) {
+  if (st == BookStatus::Ok) snprintf(gError, sizeof gError, "%s", what);
+  else snprintf(gError, sizeof gError, "%s: %s", what, bookStatusName(st));
+  return false;
+}
 void trace(const char* step, int value) {
   if (gTrace != nullptr) gTrace(step, value);
 }
@@ -78,6 +86,7 @@ struct BookReader::Impl {
 };
 
 void setTrace(TraceFn fn) { gTrace = fn; }
+const char* lastError() { return gError; }
 
 namespace {
 BookReader::Impl* gImpl = nullptr;  // one reader per device; storage below
@@ -93,6 +102,11 @@ BookReader::~BookReader() { close(); }
 
 OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText, const Memory& mem) {
   close();
+  gError[0] = '\0';
+  if (source.size() == 0) {
+    fail("dosya boş");
+    return OpenResult::Broken;
+  }
   Impl& m = *impl_;
   m.~Impl();
   new (&m) Impl();
@@ -114,10 +128,14 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
     // Container parse needs an inflate window too: use the parse arena.
     const BookStatus st = m.book.open(source, m.bookArena, m.parse);
     m.parse.reset();
+    if (st != BookStatus::Ok) fail("katalog", st);
     if (st == BookStatus::Encrypted) return OpenResult::Encrypted;
     if (st == BookStatus::OutOfMemory) return OpenResult::TooBig;
     if (st != BookStatus::Ok) return OpenResult::Broken;
-    if (m.book.spineCount() == 0) return OpenResult::Broken;
+    if (m.book.spineCount() == 0) {
+      fail("bölüm listesi boş");
+      return OpenResult::Broken;
+    }
     if (m.book.metadata().language[0] != '\0') lang = m.book.metadata().language;
 
     CssStylesheetBuilder builder;
@@ -134,6 +152,7 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
 
   if (!m.regular.init(kLiterataRegular, kLiterataRegular_size, m.glyphArena) ||
       !m.bold.init(kLiterataBold, kLiterataBold_size, m.boldGlyphArena)) {
+    fail("font yüklenemedi");
     return OpenResult::Broken;
   }
   m.fonts.add(&m.regular, freeink::font::StyleNone);
@@ -206,12 +225,12 @@ bool BookReader::openChapter(uint16_t spine) {
 
   trace("bolum", spine);
   char name[64];
-  if (!pageCacheName(spine, m.generation, name, sizeof name)) return false;
+  if (!pageCacheName(spine, m.generation, name, sizeof name)) return fail("önbellek adı");
   if (m.pages.open(*m.cache, name, m.generation, m.indexArena) != BookStatus::Ok) {
     // Not cached yet (or stale): lay the chapter out into the cache once.
     m.indexArena.reset();
     PageCacheWriter writer;
-    if (!writer.begin(*m.cache, name, m.generation, m.scratch)) return false;
+    if (!writer.begin(*m.cache, name, m.generation, m.scratch)) return fail("önbellek yazılamıyor");
     uint32_t totalChars = 0;
     BookStatus st;
     if (m.isText) {
@@ -219,16 +238,18 @@ bool BookReader::openChapter(uint16_t spine) {
     } else {
       const ManifestItem* item = m.book.spineItem(spine);
       const ZipEntry* entry = item != nullptr ? m.book.zip().find(item->href) : nullptr;
-      if (entry == nullptr) return false;
+      if (entry == nullptr) return fail("bölüm dosyası yok");
       st = ChapterLayout::layout(*m.source, m.book.zip(), *entry, item->href, m.params, m.scratch, writer,
                                  nullptr, &totalChars, &m.parse);
     }
-    if (st != BookStatus::Ok || writer.failed()) return false;
+    if (st != BookStatus::Ok) return fail("sayfalama", st);
+    if (writer.failed()) return fail("önbelleğe yazılamadı");
     writer.setTotalChars(totalChars);
-    if (!writer.finish()) return false;
+    if (!writer.finish()) return fail("önbellek kapatılamadı");
     m.scratch.reset();
     m.parse.reset();
-    if (m.pages.open(*m.cache, name, m.generation, m.indexArena) != BookStatus::Ok) return false;
+    const BookStatus rs = m.pages.open(*m.cache, name, m.generation, m.indexArena);
+    if (rs != BookStatus::Ok) return fail("önbellek okunamadı", rs);
   }
   m.pagesOpen = true;
   spine_ = spine;
