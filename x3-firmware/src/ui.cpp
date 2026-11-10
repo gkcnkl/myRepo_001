@@ -386,8 +386,19 @@ void drawWifi(Adafruit_GFX& g, const App& app) {
 
   sectionHeading(g, "1 · Telefon kamerasıyla okut", 166);
   // Standard Wi-Fi QR payload: phones offer to join the network directly.
-  char payload[96];
-  snprintf(payload, sizeof payload, "WIFI:T:WPA;S:%s;P:%s;;", app.wifiSsid, app.wifiPass);
+  // \ ; , : " must be backslash-escaped inside the S and P fields.
+  auto escape = [](const char* in, char* out, size_t n) {
+    size_t o = 0;
+    for (; *in && o + 2 < n; ++in) {
+      if (strchr("\\;,:\"", *in)) out[o++] = '\\';
+      out[o++] = *in;
+    }
+    out[o] = '\0';
+  };
+  char ssid[64], pass[40], payload[128];
+  escape(app.wifiSsid, ssid, sizeof ssid);
+  escape(app.wifiPass, pass, sizeof pass);
+  snprintf(payload, sizeof payload, "WIFI:T:WPA;S:%s;P:%s;;", ssid, pass);
   QRCode qr;
   uint8_t qrData[qrcode_getBufferSize(4)];
   if (qrcode_initText(&qr, qrData, 4, ECC_LOW, payload) == 0) {

@@ -45,7 +45,7 @@ const char* tasksPath = kBriefingPath;  // the file we loaded and write back to
 constexpr const char* kSetTimePath = "/saat.txt";  // "10.11.2026 15:30": sets the RTC once
 constexpr uint32_t kBatteryPollMs = 30000;
 constexpr int kFastRefreshesBeforeFull = 20;
-constexpr const char* kHotspotName = "X3-Brifing";
+constexpr const char* kHotspotName = "GK's Xteink X3";
 constexpr size_t kMaxUpload = 8000;
 
 EInkDisplay epd(PIN_SCLK, PIN_MOSI, PIN_CS, PIN_DC, PIN_RST, PIN_BUSY);

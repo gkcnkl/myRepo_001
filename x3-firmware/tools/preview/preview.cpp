@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
   app.screen = Screen::List;
   { Canvas c; ui::drawList(c, app, true); c.save(out, "5-sleep"); }
 
-  strcpy(app.wifiSsid, "X3-Brifing");
+  strcpy(app.wifiSsid, "GK's Xteink X3");
   strcpy(app.wifiPass, "48213907");
   strcpy(app.wifiUrl, "http://192.168.4.1");
   strcpy(app.wifiStatus, "Brifing alındı · 12 görev");

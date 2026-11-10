@@ -26,7 +26,7 @@ Tuşların cihazdaki yerleri: [docs-hardware.md](docs-hardware.md).
 
 ## Wi-Fi aktarım
 
-Listede **SOL** tuşuna bas. Cihaz kendi Wi-Fi ağını açar (`X3-Brifing`, şifre
+Listede **SOL** tuşuna bas. Cihaz kendi Wi-Fi ağını açar (`GK's Xteink X3`, şifre
 her seferinde yeni, ekranda yazar) ve bir QR kod gösterir:
 
 1. Telefon kamerasıyla QR kodu okut (ya da ağa elle bağlan).
@@ -78,10 +78,10 @@ biçim anlaşılmamıştır (`2026-11-10 15:30` biçimi de kabul edilir).
 
 ## Hazır imajı yükleme (Windows)
 
-`release/x3-bugun-v0.8.bin` dosyasını esptool klasörüne kopyala, sonra:
+`release/x3-bugun-v0.8.1.bin` dosyasını esptool klasörüne kopyala, sonra:
 
 ```bash
-esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.8.bin
+esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.8.1.bin
 ```
 
 ## Fabrika firmware'ine dönüş
