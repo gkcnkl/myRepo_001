@@ -7,6 +7,24 @@ Ekranın üst kenarında kalın siyah bir şerit var: yön doğru mu diye kontro
 Donanım katmanı: [FreeInk SDK](https://github.com/Free-Ink/freeink-sdk) (MIT).
 Repoya dahil değil, derlemeden önce bu klasöre klonlanır.
 
+![Önizleme](release/x3-preview.png)
+
+## Hazır imajı yükleme (Windows)
+
+`release/x3-merhaba-v0.1.bin` dosyasını esptool klasörüne kopyala, sonra:
+
+```bash
+esptool --port COM14 --baud 921600 write-flash 0 x3-merhaba-v0.1.bin
+```
+
+## Ekran önizlemesi (cihazsız)
+
+`tools/preview/` aynı `src/ui.cpp` çizim kodunu PC'de çalıştırıp PGM görüntü üretir:
+
+```bash
+tools/preview/build.sh /tmp/x3-preview
+```
+
 ## Derleme
 
 ```bash

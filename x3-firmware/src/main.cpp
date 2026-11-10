@@ -8,11 +8,11 @@
 #include <Arduino.h>
 #include <BoardConfig.h>
 #include <EInkDisplay.h>
-#include <Fonts/FreeSansBold18pt7b.h>
-#include <Fonts/FreeSans12pt7b.h>
 #include <InputManager.h>
 #include <SPI.h>
 #include <XteinkDetect.h>
+
+#include "ui.h"
 
 namespace {
 
@@ -49,16 +49,6 @@ class Screen : public Adafruit_GFX {
     if (color) cell &= ~mask;  // color 1 = black ink
     else cell |= mask;
   }
-
-  void clear() { epd.clearScreen(0xFF); }
-
-  void centered(const char* text, int16_t y) {
-    int16_t bx, by;
-    uint16_t bw, bh;
-    getTextBounds(text, 0, y, &bx, &by, &bw, &bh);
-    setCursor((width() - bw) / 2 - bx, y);
-    print(text);
-  }
 };
 
 Screen screen;
@@ -78,29 +68,10 @@ const char* buttonName(uint8_t b) {
 }
 
 void drawFrame(const char* lastButton) {
-  screen.clear();
-  screen.setTextColor(1);
-  screen.drawRect(8, 8, screen.width() - 16, screen.height() - 16, 1);
-  screen.fillRect(8, 8, screen.width() - 16, 40, 1);  // marks the TOP edge
-
-  screen.setFont(&FreeSansBold18pt7b);
-  screen.centered("Merhaba!", 180);
-  screen.setFont(&FreeSans12pt7b);
-  screen.centered("Ozel firmware calisiyor", 230);
-  screen.centered("Bir tusa bas:", 360);
-
-  screen.setFont(&FreeSansBold18pt7b);
-  screen.centered(lastButton, 430);
-
-  char line[40];
-  snprintf(line, sizeof line, "Basma sayisi: %lu", static_cast<unsigned long>(pressCount));
-  screen.setFont(&FreeSans12pt7b);
-  screen.centered(line, 520);
-
   const char* panel = BoardConfig::ACTIVE.displayController == BoardConfig::DisplayController::UC8279
                           ? "Ekran: UC8279"
                           : "Ekran: UC8253";
-  screen.centered(panel, screen.height() - 40);
+  ui::drawHello(screen, lastButton, pressCount, panel);
 }
 
 }  // namespace
