@@ -5,8 +5,8 @@
 namespace {
 
 // Same order as EXTRA in tools/fontgen/gen_font.py.
-constexpr uint16_t kExtra[] = {0x00C7, 0x00E7, 0x011E, 0x011F, 0x0130, 0x0131,
-                               0x00D6, 0x00F6, 0x015E, 0x015F, 0x00DC, 0x00FC};
+constexpr uint16_t kExtra[] = {0x00C7, 0x00E7, 0x011E, 0x011F, 0x0130, 0x0131, 0x00D6, 0x00F6,
+                               0x015E, 0x015F, 0x00DC, 0x00FC, 0x00B7, 0x00B0, 0x2013};
 
 char mapCodepoint(uint32_t cp) {
   if (cp >= 0x20 && cp <= 0x7E) return static_cast<char>(cp);
@@ -14,6 +14,7 @@ char mapCodepoint(uint32_t cp) {
     if (kExtra[i] == cp) return static_cast<char>(0x80 + i);
   }
   if (cp == '\t') return ' ';
+  if (cp == 0x2014) return static_cast<char>(0x8E);  // em dash -> en dash
   return '?';
 }
 
@@ -40,4 +41,14 @@ void utf8ToFont(const char* in, char* out, size_t outSize) {
     out[o++] = ok ? mapCodepoint(cp) : '?';
   }
   out[o] = '\0';
+}
+
+void upperFont(char* enc) {
+  for (auto* p = reinterpret_cast<unsigned char*>(enc); *p; ++p) {
+    const unsigned char c = *p;
+    if (c == 'i') *p = 0x84;                                  // i -> İ
+    else if (c >= 'a' && c <= 'z') *p = c - 'a' + 'A';
+    else if (c == 0x85) *p = 'I';                             // ı -> I
+    else if (c >= 0x81 && c <= 0x8B && (c & 1)) *p = c - 1;   // ç ğ ö ş ü -> upper
+  }
 }

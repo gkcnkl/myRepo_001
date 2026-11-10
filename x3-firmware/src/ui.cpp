@@ -3,90 +3,126 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "fonts/Inter17.h"
-#include "fonts/Inter22.h"
-#include "fonts/InterBold150Digits.h"
-#include "fonts/InterBold34.h"
-#include "fonts/InterSemi22.h"
+#include "fonts/Inter14.h"
+#include "fonts/InterMed18.h"
+#include "fonts/InterSemi12.h"
+#include "fonts/Play160Digits.h"
+#include "fonts/Play18.h"
+#include "fonts/Play26.h"
+#include "fonts/Play46.h"
 #include "text.h"
 
+// Visual language of the "Sabah Brifingi" artifact, translated to 1-bit
+// e-ink: Playfair Display for titles, numbers and times; Inter for body text;
+// letter-spaced uppercase labels; a 2px rule under the masthead, 1px rules
+// under section headings and dotted hairlines (the artifact's light gray)
+// between rows; round check marks; a status bar at the bottom.
 namespace ui {
 namespace {
 
-constexpr int16_t kMargin = 32;
-constexpr int16_t kRowsTop = 142;
-constexpr int16_t kRowH = 66;
-constexpr int16_t kFooterTop = 704;
-constexpr int16_t kCheck = 26;
+constexpr int16_t kW = 528;
+constexpr int16_t kH = 792;
+constexpr int16_t kM = 28;  // side margin
+constexpr int16_t kBarTop = 726;
+constexpr int16_t kTimeColW = 112;
 
 struct Encoded {
-  char s[160];
-  explicit Encoded(const char* utf8) { utf8ToFont(utf8, s, sizeof s); }
+  char s[200];
+  explicit Encoded(const char* utf8, bool upper = false) {
+    utf8ToFont(utf8, s, sizeof s);
+    if (upper) upperFont(s);
+  }
 };
 
-uint16_t widthOf(Adafruit_GFX& g, const char* enc) {
+uint16_t widthOf(Adafruit_GFX& g, const GFXfont* f, const char* enc) {
+  g.setFont(f);
   int16_t bx, by;
   uint16_t bw, bh;
   g.getTextBounds(enc, 0, 100, &bx, &by, &bw, &bh);
   return bw + (bx > 0 ? bx : 0);
 }
 
-void text(Adafruit_GFX& g, const GFXfont* f, const char* utf8, int16_t x, int16_t y, uint16_t color = 1) {
-  Encoded e(utf8);
+void drawEnc(Adafruit_GFX& g, const GFXfont* f, const char* enc, int16_t x, int16_t y, uint16_t color) {
   g.setFont(f);
   g.setTextColor(color);
   g.setCursor(x, y);
-  g.print(e.s);
+  g.print(enc);
 }
 
-void textCentered(Adafruit_GFX& g, const GFXfont* f, const char* utf8, int16_t y, uint16_t color = 1) {
-  Encoded e(utf8);
+// Letter-spaced text (the artifact's uppercase labels).
+uint16_t trackedWidth(const GFXfont* f, const char* enc, int16_t tracking) {
+  uint16_t w = 0;
+  for (const auto* p = reinterpret_cast<const unsigned char*>(enc); *p; ++p) {
+    if (*p < f->first || *p > f->last) continue;
+    w += f->glyph[*p - f->first].xAdvance + tracking;
+  }
+  return w > 0 ? w - tracking : 0;
+}
+
+void drawTracked(Adafruit_GFX& g, const GFXfont* f, const char* enc, int16_t x, int16_t y, int16_t tracking,
+                 uint16_t color) {
   g.setFont(f);
   g.setTextColor(color);
-  g.setCursor((g.width() - widthOf(g, e.s)) / 2, y);
-  g.print(e.s);
+  for (const auto* p = reinterpret_cast<const unsigned char*>(enc); *p; ++p) {
+    if (*p < f->first || *p > f->last) continue;
+    g.setCursor(x, y);
+    g.write(*p);
+    x += f->glyph[*p - f->first].xAdvance + tracking;
+  }
 }
 
-void textRight(Adafruit_GFX& g, const GFXfont* f, const char* utf8, int16_t right, int16_t y) {
-  Encoded e(utf8);
-  g.setFont(f);
-  g.setTextColor(1);
-  g.setCursor(right - widthOf(g, e.s), y);
-  g.print(e.s);
+// Uppercase, letter-spaced label. align: 0 left, 1 center, 2 right (x = edge).
+void label(Adafruit_GFX& g, const char* utf8, int16_t x, int16_t y, int align = 0, uint16_t color = 1) {
+  Encoded e(utf8, true);
+  const uint16_t w = trackedWidth(&InterSemi12, e.s, 2);
+  if (align == 1) x = (kW - w) / 2;
+  if (align == 2) x -= w;
+  drawTracked(g, &InterSemi12, e.s, x, y, 2, color);
 }
 
-// Truncates an already-encoded string in place with "..." to fit maxW.
-void fitWidth(Adafruit_GFX& g, char* enc, uint16_t maxW) {
-  if (widthOf(g, enc) <= maxW) return;
+// Truncates an encoded string in place with "..." to fit maxW.
+void fitWidth(Adafruit_GFX& g, const GFXfont* f, char* enc, uint16_t maxW) {
+  if (widthOf(g, f, enc) <= maxW) return;
   size_t n = strlen(enc);
   while (n > 0) {
     enc[--n] = '\0';
-    char tmp[170];
+    char tmp[210];
     snprintf(tmp, sizeof tmp, "%s...", enc);
-    if (widthOf(g, tmp) <= maxW) {
+    if (widthOf(g, f, tmp) <= maxW) {
       strcpy(enc, tmp);
       return;
     }
   }
 }
 
-// Word-wraps an encoded string into at most maxLines centered lines.
-void wrapCentered(Adafruit_GFX& g, const GFXfont* f, const char* utf8, int16_t y, int16_t lineH, int maxLines,
-                  uint16_t maxW) {
+void text(Adafruit_GFX& g, const GFXfont* f, const char* utf8, int16_t x, int16_t y, uint16_t maxW = 0,
+          uint16_t color = 1) {
   Encoded e(utf8);
-  g.setFont(f);
-  g.setTextColor(1);
+  if (maxW) fitWidth(g, f, e.s, maxW);
+  drawEnc(g, f, e.s, x, y, color);
+}
+
+void textCentered(Adafruit_GFX& g, const GFXfont* f, const char* utf8, int16_t y, uint16_t color = 1) {
+  Encoded e(utf8);
+  drawEnc(g, f, e.s, (kW - widthOf(g, f, e.s)) / 2, y, color);
+}
+
+// Word-wraps into at most maxLines lines starting at (x, y); returns lines used.
+int wrap(Adafruit_GFX& g, const GFXfont* f, const char* utf8, int16_t x, int16_t y, int16_t lineH, int maxLines,
+         uint16_t maxW, bool center = false) {
+  Encoded e(utf8);
   const char* p = e.s;
-  for (int line = 0; line < maxLines && *p; ++line) {
-    char buf[170] = "";
-    const char* best = nullptr;  // end of the last word that fits
+  int line = 0;
+  for (; line < maxLines && *p; ++line) {
+    char buf[210] = "";
+    const char* best = nullptr;
     const char* q = p;
     while (true) {
       const char* wordEnd = q;
       while (*wordEnd && *wordEnd != ' ') ++wordEnd;
-      char trial[170];
+      char trial[210];
       snprintf(trial, sizeof trial, "%.*s", static_cast<int>(wordEnd - p), p);
-      if (widthOf(g, trial) > maxW && best) break;
+      if (widthOf(g, f, trial) > maxW && best) break;
       best = wordEnd;
       strcpy(buf, trial);
       if (!*wordEnd) break;
@@ -95,73 +131,127 @@ void wrapCentered(Adafruit_GFX& g, const GFXfont* f, const char* utf8, int16_t y
     p = best;
     while (*p == ' ') ++p;
     if (line == maxLines - 1 && *p) {
-      // Out of lines: append the rest and let fitWidth add "...".
-      char rest[340];
+      char rest[420];
       snprintf(rest, sizeof rest, "%s %s", buf, p);
       strncpy(buf, rest, sizeof buf - 1);
       buf[sizeof buf - 1] = '\0';
-      fitWidth(g, buf, maxW);
     }
-    g.setCursor((g.width() - widthOf(g, buf)) / 2, y + line * lineH);
-    g.print(buf);
+    fitWidth(g, f, buf, maxW);
+    const int16_t lx = center ? (kW - widthOf(g, f, buf)) / 2 : x;
+    drawEnc(g, f, buf, lx, y + line * lineH, 1);
+  }
+  return line;
+}
+
+// The artifact's light-gray hairline, as a dotted line.
+void hairline(Adafruit_GFX& g, int16_t x, int16_t y, int16_t w) {
+  for (int16_t i = 0; i < w; i += 3) g.drawPixel(x + i, y, 1);
+}
+
+void vHairline(Adafruit_GFX& g, int16_t x, int16_t y, int16_t h) {
+  for (int16_t i = 0; i < h; i += 3) g.drawPixel(x, y + i, 1);
+}
+
+// Section heading: uppercase label + 1px rule.
+void sectionHeading(Adafruit_GFX& g, const char* utf8, int16_t y) {
+  label(g, utf8, kM, y);
+  g.drawFastHLine(kM, y + 7, kW - 2 * kM, 1);
+}
+
+// Big number with an uppercase caption under it, right-aligned at `right`.
+int16_t countCell(Adafruit_GFX& g, const char* value, const char* caption, int16_t right) {
+  Encoded v(value);
+  Encoded c(caption, true);
+  const uint16_t vw = widthOf(g, &Play26, v.s);
+  const uint16_t cw = trackedWidth(&InterSemi12, c.s, 2);
+  const uint16_t w = vw > cw ? vw : cw;
+  const int16_t x = right - w;
+  drawEnc(g, &Play26, v.s, x, 62, 1);
+  drawTracked(g, &InterSemi12, c.s, x, 82, 2, 1);
+  return x;
+}
+
+// Masthead: eyebrow, serif title, counts on the right, 2px rule, dateline.
+void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* title, bool showCounts) {
+  label(g, eyebrow, kM, 26);
+
+  int16_t countsLeft = kW - kM;
+  if (showCounts) {
+    if (app.batteryPercent >= 0) {
+      char v[8];
+      snprintf(v, sizeof v, "%%%d", app.batteryPercent);
+      countsLeft = countCell(g, v, app.charging ? "şarj" : "pil", countsLeft) - 22;
+    }
+    char v[16];
+    snprintf(v, sizeof v, "%d/%d", app.tasks.doneCount(), app.tasks.count);
+    countsLeft = countCell(g, v, "tamam", countsLeft) - 18;
+  }
+  text(g, &Play46, title, kM - 2, 82, countsLeft - kM);
+
+  g.fillRect(kM, 98, kW - 2 * kM, 2, 1);
+
+  // Dateline: date in caps, then the subtitle.
+  char date[64];
+  if (app.dateText[0]) {
+    Encoded d(app.dateText, true);
+    snprintf(date, sizeof date, "%s", d.s);
+  } else {
+    Encoded d("Tarih ayarlı değil", true);
+    snprintf(date, sizeof date, "%s", d.s);
+  }
+  drawTracked(g, &InterSemi12, date, kM, 124, 1, 1);
+  if (app.tasks.subtitle[0]) {
+    const int16_t x = kM + trackedWidth(&InterSemi12, date, 1) + 14;
+    text(g, &Inter14, app.tasks.subtitle, x, 124, kW - kM - x);
   }
 }
 
-void checkbox(Adafruit_GFX& g, int16_t x, int16_t y, bool checked, uint16_t ink) {
-  g.drawRect(x, y, kCheck, kCheck, ink);
-  g.drawRect(x + 1, y + 1, kCheck - 2, kCheck - 2, ink);
-  if (!checked) return;
-  g.fillRect(x, y, kCheck, kCheck, ink);
-  const uint16_t paper = ink ? 0 : 1;
-  for (int d = -1; d <= 1; ++d) {
-    g.drawLine(x + 6, y + 13 + d, x + 11, y + 18 + d, paper);
-    g.drawLine(x + 11, y + 18 + d, x + 20, y + 8 + d, paper);
+// Bottom status bar: a hairline, two uppercase labels and an optional hint line.
+void statusBar(Adafruit_GFX& g, const char* left, const char* right, const char* hint) {
+  g.drawFastHLine(0, kBarTop, kW, 1);
+  label(g, left, kM, kBarTop + 28);
+  label(g, right, kW - kM, kBarTop + 28, 2);
+  if (hint) textCentered(g, &Inter14, hint, kBarTop + 54);
+}
+
+void indicatorGrid(Adafruit_GFX& g, const TaskList& t) {
+  sectionHeading(g, "Göstergeler", 166);
+  const int16_t top = 174, bottom = 284;
+  const int16_t cellW = (kW - 2 * kM) / t.kMaxIndicators;
+  for (int i = 0; i < t.indicatorCount; ++i) {
+    const Indicator& ind = t.indicators[i];
+    const int16_t x = kM + i * cellW;
+    const int16_t pad = i == 0 ? 0 : 12;
+    const uint16_t innerW = cellW - pad - 8;
+    if (i > 0) vHairline(g, x, top + 4, bottom - top - 8);
+    {
+      Encoded l(ind.label, true);
+      fitWidth(g, &InterSemi12, l.s, innerW);
+      drawTracked(g, &InterSemi12, l.s, x + pad, top + 22, 2, 1);
+    }
+    {
+      // Serif value; drop to the smaller size before truncating.
+      Encoded v(ind.value);
+      const GFXfont* vf = widthOf(g, &Play26, v.s) <= innerW ? &Play26 : &Play18;
+      fitWidth(g, vf, v.s, innerW);
+      drawEnc(g, vf, v.s, x + pad, top + 56, 1);
+    }
+    wrap(g, &Inter14, ind.detail, x + pad, top + 78, 18, 2, innerW);
   }
+  hairline(g, kM, bottom, kW - 2 * kM);
 }
 
-void progressBar(Adafruit_GFX& g, int16_t x, int16_t y, int16_t w, int16_t h, int num, int den) {
-  g.drawRect(x, y, w, h, 1);
-  if (den > 0 && num > 0) g.fillRect(x, y, static_cast<int16_t>(static_cast<int32_t>(w) * num / den), h, 1);
+void checkCircle(Adafruit_GFX& g, int16_t cx, int16_t cy, bool done, uint16_t ink) {
+  g.drawCircle(cx, cy, 9, ink);
+  if (done) g.fillCircle(cx, cy, 4, ink);
 }
 
-// Battery icon + "%84" right-aligned at `right`, text baseline at y.
-void battery(Adafruit_GFX& g, const App& app, int16_t right, int16_t y) {
-  if (app.batteryPercent < 0) return;
-  char label[24];
-  snprintf(label, sizeof label, app.charging ? "%%%d şarj" : "%%%d", app.batteryPercent);
-  Encoded e(label);
-  g.setFont(&Inter17);
-  g.setTextColor(1);
-  const int16_t tw = widthOf(g, e.s);
-  g.setCursor(right - tw, y);
-  g.print(e.s);
-
-  constexpr int16_t bw = 30, bh = 15;
-  const int16_t bx = right - tw - 10 - bw - 3;
-  const int16_t by = y - bh + 1;
-  g.drawRect(bx, by, bw, bh, 1);
-  g.fillRect(bx + bw, by + 4, 3, bh - 8, 1);  // terminal nub
-  const int16_t fill = static_cast<int16_t>((bw - 4) * (app.batteryPercent > 100 ? 100 : app.batteryPercent) / 100);
-  if (fill > 0) g.fillRect(bx + 2, by + 2, fill, bh - 4, 1);
-}
-
-// Title row shared by the list and the sleep screen.
-void header(Adafruit_GFX& g, const App& app) {
-  const TaskList& t = app.tasks;
-  text(g, &InterBold34, "Bugün", kMargin, 54);
-  char count[24];
-  snprintf(count, sizeof count, "%d / %d", t.doneCount(), t.count);
-  textRight(g, &InterSemi22, count, g.width() - kMargin, 52);
-
-  text(g, &Inter17, app.dateText[0] ? app.dateText : "Tarih ayarlı değil", kMargin, 88);
-  battery(g, app, g.width() - kMargin, 88);
-  progressBar(g, kMargin, 104, g.width() - 2 * kMargin, 10, t.doneCount(), t.count);
-}
-
-void footer(Adafruit_GFX& g, const char* line1, const char* line2) {
-  g.drawFastHLine(kMargin, kFooterTop, g.width() - 2 * kMargin, 1);
-  textCentered(g, &Inter17, line1, kFooterTop + 36);
-  textCentered(g, &Inter17, line2, kFooterTop + 66);
+const char* weekdayOf(const App& app, char* buf, size_t n) {
+  // dateText is "Salı, 10 Kasım": the weekday is everything before the comma.
+  const char* comma = strchr(app.dateText, ',');
+  if (!comma) return "";
+  snprintf(buf, n, "%.*s", static_cast<int>(comma - app.dateText), app.dateText);
+  return buf;
 }
 
 }  // namespace
@@ -170,89 +260,122 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
   g.fillScreen(0);
   const TaskList& t = app.tasks;
 
-  header(g, app);
+  masthead(g, app, t.eyebrow[0] ? t.eyebrow : "Günlük brifing", t.title[0] ? t.title : "Bugün", true);
+  if (t.indicatorCount > 0) indicatorGrid(g, t);
 
   if (t.count == 0) {
-    textCentered(g, &InterSemi22, "Görev yok", 330);
-    textCentered(g, &Inter17, "SD karttaki gorevler.txt dosyasına", 380);
-    textCentered(g, &Inter17, "her satıra bir görev yaz.", 408);
+    textCentered(g, &Play26, "Görev yok", 400);
+    textCentered(g, &Inter14, "SD kartın köküne brifing.txt koy:", 440);
+    textCentered(g, &Inter14, "her satıra bir görev.", 460);
   }
 
-  const int last = t.count < app.scroll + App::kVisibleRows ? t.count : app.scroll + App::kVisibleRows;
+  bool anyTime = false;
+  for (int i = 0; i < t.count; ++i) anyTime |= t.items[i].time[0] != '\0';
+
+  int16_t y = app.listTop();
+  const int shown = app.rowsFrom(app.scroll);
+  const int last = app.scroll + shown < t.count ? app.scroll + shown : t.count;
+  if (app.scroll > 0) label(g, "yukarıda daha var", kW - kM, y - 4, 2);
   for (int i = app.scroll; i < last; ++i) {
-    const int16_t y = kRowsTop + (i - app.scroll) * kRowH;
+    const Task& task = t.items[i];
+    if (app.needsHeading(i, app.scroll)) {
+      sectionHeading(g, t.sections[task.section], y + 26);
+      y += App::kSectionH;
+    }
     const bool sel = !sleeping && i == app.selected;
     const uint16_t ink = sel ? 0 : 1;
-    if (sel) g.fillRoundRect(kMargin - 12, y, g.width() - 2 * kMargin + 24, kRowH - 8, 10, 1);
+    if (sel) g.fillRect(kM - 10, y + 1, kW - 2 * kM + 20, App::kRowH - 2, 1);
 
-    const int16_t cy = y + (kRowH - 8 - kCheck) / 2;
-    checkbox(g, kMargin, cy, t.items[i].done, ink);
-
-    const int16_t tx = kMargin + kCheck + 18;
-    const uint16_t maxW = g.width() - kMargin - tx;
-    Encoded e(t.items[i].text);
-    g.setFont(&Inter22);
-    fitWidth(g, e.s, maxW);
-    g.setTextColor(ink);
-    const int16_t baseline = y + (kRowH - 8) / 2 + 8;
-    g.setCursor(tx, baseline);
-    g.print(e.s);
-    if (t.items[i].done) {
-      const int16_t w = widthOf(g, e.s);
-      g.drawFastHLine(tx, baseline - 8, w, ink);
-      g.drawFastHLine(tx, baseline - 7, w, ink);
+    checkCircle(g, kM + 9, y + App::kRowH / 2, task.done, ink);
+    int16_t tx = kM + 30;
+    if (anyTime) {
+      if (task.time[0]) text(g, &Play18, task.time, tx, y + 29, kTimeColW - 8, ink);
+      tx += kTimeColW;
     }
+    Encoded e(task.text);
+    fitWidth(g, &InterMed18, e.s, kW - kM - tx);
+    drawEnc(g, &InterMed18, e.s, tx, y + 29, ink);
+    if (task.done) g.drawFastHLine(tx, y + 23, widthOf(g, &InterMed18, e.s), ink);
+    if (!sel) hairline(g, kM, y + App::kRowH - 1, kW - 2 * kM);
+    y += App::kRowH;
   }
+  if (last < t.count) label(g, "aşağıda daha var", kW - kM, App::kListBottom + 4, 2);
 
-  // Scroll hints when the list is longer than the screen.
-  if (app.scroll > 0) textRight(g, &Inter17, "yukarıda daha var", g.width() - kMargin, kRowsTop - 4);
-  if (last < t.count) textRight(g, &Inter17, "aşağıda daha var", g.width() - kMargin, kFooterTop - 12);
-
+  char wd[24];
+  char done[24];
+  snprintf(done, sizeof done, "%d / %d tamamlandı", t.doneCount(), t.count);
   if (sleeping) {
-    g.fillRect(0, kFooterTop, g.width(), g.height() - kFooterTop, 1);
-    textCentered(g, &InterSemi22, "Uyuyor", kFooterTop + 40, 0);
-    textCentered(g, &Inter17, "Açmak için GÜÇ tuşuna bas", kFooterTop + 72, 0);
-  } else if (t.count == 0) {
-    footer(g, "GERİ: ekranı tazele", "GÜÇ: uyku");
-  } else {
-    footer(g, "YUKARI / AŞAĞI: seç     TAMAM: bitti", "SAĞ: odaklan (25 dk)     GÜÇ: uyku");
+    g.fillRect(0, kBarTop, kW, kH - kBarTop, 1);
+    label(g, "Uyuyor", kM, kBarTop + 28, 0, 0);
+    label(g, done, kW - kM, kBarTop + 28, 2, 0);
+    textCentered(g, &Inter14, "Açmak için GÜÇ tuşuna bas", kBarTop + 54, 0);
+    return;
   }
-  if (!app.sdAvailable && !sleeping) textCentered(g, &Inter17, "SD kart yok: değişiklikler kaydedilmez", kFooterTop - 12);
+  const char* hint = t.count == 0 ? "GERİ tazele  ·  GÜÇ uyku"
+                                  : "TAMAM işaretle  ·  SAĞ odak  ·  GERİ tazele  ·  GÜÇ uyku";
+  statusBar(g, done, app.sdAvailable ? weekdayOf(app, wd, sizeof wd) : "SD kart yok", hint);
 }
 
 void drawFocus(Adafruit_GFX& g, const App& app, uint32_t nowMs) {
   g.fillScreen(0);
-  text(g, &InterBold34, "Odak", kMargin, 62);
-  textRight(g, &InterSemi22, app.focusPaused ? "duraklatıldı" : "25 dk", g.width() - kMargin, 60);
-  g.drawFastHLine(kMargin, 84, g.width() - 2 * kMargin, 1);
+  char elapsed[16];
+  snprintf(elapsed, sizeof elapsed, "%lu", static_cast<unsigned long>(app.focusElapsed(nowMs) / 60000));
+  masthead(g, app, "Odak seansı · 25 dk", "Odak", false);
+  countCell(g, elapsed, "dk geçti", kW - kM);
 
+  sectionHeading(g, "Şu anki görev", 166);
   if (app.focusTask >= 0 && app.focusTask < app.tasks.count) {
-    wrapCentered(g, &InterSemi22, app.tasks.items[app.focusTask].text, 160, 34, 3, g.width() - 2 * kMargin);
+    const Task& task = app.tasks.items[app.focusTask];
+    int16_t y = 200;
+    if (task.time[0]) {
+      text(g, &Play18, task.time, kM, y);
+      y += 28;
+    }
+    wrap(g, &InterMed18, task.text, kM, y, 26, 2, kW - 2 * kM);
   }
 
   char minutes[8];
   snprintf(minutes, sizeof minutes, "%d", app.focusMinutesLeft(nowMs));
-  g.setFont(&InterBold150Digits);
+  g.setFont(&Play160Digits);
   g.setTextColor(1);
-  g.setCursor((g.width() - widthOf(g, minutes)) / 2, 470);
+  g.setCursor((kW - widthOf(g, &Play160Digits, minutes)) / 2, 470);
   g.print(minutes);
-  textCentered(g, &Inter22, "dakika kaldı", 520);
+  label(g, "dakika kaldı", 0, 540, 1);
 
   const int total = static_cast<int>(App::kFocusMs / 1000);
   const int done = static_cast<int>(app.focusElapsed(nowMs) / 1000);
-  progressBar(g, kMargin + 40, 570, g.width() - 2 * kMargin - 80, 14, done, total);
+  const int16_t bx = kM + 40, bw = kW - 2 * kM - 80;
+  g.drawRect(bx, 572, bw, 8, 1);
+  if (done > 0) g.fillRect(bx, 572, static_cast<int16_t>(static_cast<int32_t>(bw) * done / total), 8, 1);
 
-  footer(g, app.focusPaused ? "TAMAM: devam et" : "TAMAM: duraklat", "GERİ: iptal, listeye dön");
+  if (app.focusPaused) {
+    // The artifact's pill, as an outlined capsule.
+    Encoded p("Duraklatıldı", true);
+    const uint16_t w = trackedWidth(&InterSemi12, p.s, 2) + 24;
+    g.drawRoundRect((kW - w) / 2, 610, w, 26, 13, 1);
+    drawTracked(g, &InterSemi12, p.s, (kW - w) / 2 + 12, 628, 2, 1);
+  }
+
+  statusBar(g, app.focusPaused ? "Tamam · devam" : "Tamam · duraklat", "Geri · iptal", nullptr);
 }
 
 void drawFocusDone(Adafruit_GFX& g, const App& app) {
   g.fillScreen(0);
-  textCentered(g, &InterBold34, "Süre doldu!", 230);
+  masthead(g, app, "Odak seansı bitti", "Süre doldu", false);
+  countCell(g, "25", "dk odak", kW - kM);
+
+  sectionHeading(g, "Görev", 166);
   if (app.focusTask >= 0 && app.focusTask < app.tasks.count) {
-    wrapCentered(g, &InterSemi22, app.tasks.items[app.focusTask].text, 310, 34, 3, g.width() - 2 * kMargin);
+    const Task& task = app.tasks.items[app.focusTask];
+    int16_t y = 200;
+    if (task.time[0]) {
+      text(g, &Play18, task.time, kM, y);
+      y += 28;
+    }
+    wrap(g, &InterMed18, task.text, kM, y, 26, 3, kW - 2 * kM);
   }
-  textCentered(g, &Inter22, "Bu görevi bitirdin mi?", 460);
-  footer(g, "TAMAM: evet, işaretle", "GERİ: hayır, listeye dön");
+  textCentered(g, &Play26, "Bu görevi bitirdin mi?", 420);
+  statusBar(g, "Tamam · evet, işaretle", "Geri · hayır", nullptr);
 }
 
 }  // namespace ui

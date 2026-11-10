@@ -26,12 +26,21 @@ class Canvas : public Adafruit_GFX {
   std::vector<uint8_t> px;
 };
 
+// Usage: x3-preview <out-dir> [briefing-file]
 int main(int argc, char** argv) {
   const char* out = argc > 1 ? argv[1] : ".";
   App app;
-  app.tasks.loadSample();
-  app.tasks.items[0].done = true;
-  app.tasks.items[2].done = true;
+  if (argc > 2) {
+    FILE* f = fopen(argv[2], "rb");
+    static char buf[8192];
+    const size_t n = f ? fread(buf, 1, sizeof buf, f) : 0;
+    if (f) fclose(f);
+    app.tasks.parse(buf, n);
+  } else {
+    app.tasks.loadSample();
+    app.tasks.items[0].done = true;
+    app.tasks.items[2].done = true;
+  }
   app.selected = 1;
   strcpy(app.dateText, "Salı, 10 Kasım");
   app.batteryPercent = 84;

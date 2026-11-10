@@ -34,7 +34,10 @@ constexpr int PIN_BUSY = 6;
 // the device on, LOW (held through sleep) powers it off.
 constexpr gpio_num_t PIN_POWER_LATCH = GPIO_NUM_13;
 
-constexpr const char* kTasksPath = "/gorevler.txt";
+// /brifing.txt is preferred; /gorevler.txt is the older name.
+constexpr const char* kBriefingPath = "/brifing.txt";
+constexpr const char* kLegacyTasksPath = "/gorevler.txt";
+const char* tasksPath = kBriefingPath;  // the file we loaded and write back to
 constexpr const char* kSetTimePath = "/saat.txt";  // "10.11.2026 15:30": sets the RTC once
 constexpr uint32_t kBatteryPollMs = 30000;
 constexpr int kFastRefreshesBeforeFull = 20;
@@ -79,25 +82,26 @@ void loadTasks() {
     app.tasks.loadSample();
     return;
   }
-  FsFile f = SdMan.open(kTasksPath, O_RDONLY);
+  tasksPath = SdMan.exists(kBriefingPath) || !SdMan.exists(kLegacyTasksPath) ? kBriefingPath : kLegacyTasksPath;
+  FsFile f = SdMan.open(tasksPath, O_RDONLY);
   if (!f) {
-    Serial.println("[x3] creating sample /gorevler.txt");
-    SdMan.writeFile(kTasksPath, String(kSampleTasksFile));
+    Serial.println("[x3] creating sample /brifing.txt");
+    SdMan.writeFile(kBriefingPath, String(kSampleTasksFile));
     app.tasks.loadSample();
     return;
   }
-  static char buf[4096];
+  static char buf[8192];
   const int n = f.read(buf, sizeof buf);
   f.close();
   app.tasks.parse(buf, n > 0 ? static_cast<size_t>(n) : 0);
-  Serial.printf("[x3] loaded %d tasks\n", app.tasks.count);
+  Serial.printf("[x3] loaded %d tasks from %s\n", app.tasks.count, tasksPath);
 }
 
 void saveTasks() {
   if (!app.sdAvailable) return;
-  static char buf[4096];
+  static char buf[8192];
   app.tasks.serialize(buf, sizeof buf);
-  if (!SdMan.writeFile(kTasksPath, String(buf))) Serial.println("[x3] save failed");
+  if (!SdMan.writeFile(tasksPath, String(buf))) Serial.println("[x3] save failed");
 }
 
 // If /saat.txt exists, set the RTC from it and delete it.

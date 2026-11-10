@@ -38,6 +38,77 @@ static void testParse() {
   }
 }
 
+static void testBriefingFormat() {
+  const char* f =
+      "ust: Gökçen'in günlük brifingi\n"
+      "başlık: Sabah Brifingi\n"
+      "alt: Sprint haftası H6\n"
+      "gösterge: Hava | 2,5 °C | kar sağanağı\n"
+      "gosterge: Enerji | 67 · dengeli\n"
+      "gosterge: yalnız değer\n"
+      "gosterge: dördüncü | atlanır\n"
+      "## Günün akışı\n"
+      "[x] 09:15-10:00 | Sync: (A) Ekip | toplantısı\n"
+      "[ ] 18:00-19:00 | Kitap oku\n"
+      "## Bugün due\n"
+      "[ ] Alt katı temizle.\n"
+      "## Boş bölüm\n";
+  TaskList t;
+  t.parse(f, strlen(f));
+  CHECK(strcmp(t.eyebrow, "Gökçen'in günlük brifingi") == 0);
+  CHECK(strcmp(t.title, "Sabah Brifingi") == 0);
+  CHECK(strcmp(t.subtitle, "Sprint haftası H6") == 0);
+  CHECK(t.indicatorCount == 3);
+  CHECK(strcmp(t.indicators[0].label, "Hava") == 0 && strcmp(t.indicators[0].value, "2,5 °C") == 0 &&
+        strcmp(t.indicators[0].detail, "kar sağanağı") == 0);
+  CHECK(strcmp(t.indicators[1].value, "67 · dengeli") == 0 && t.indicators[1].detail[0] == '\0');
+  CHECK(strcmp(t.indicators[2].value, "yalnız değer") == 0 && t.indicators[2].label[0] == '\0');
+  CHECK(t.sectionCount == 3);
+  CHECK(t.count == 3);
+  CHECK(strcmp(t.items[0].time, "09:15-10:00") == 0);
+  CHECK(strcmp(t.items[0].text, "Sync: (A) Ekip | toplantısı") == 0);  // only the first bar splits
+  CHECK(t.items[0].done && t.items[0].section == 0);
+  CHECK(t.items[2].time[0] == '\0' && t.items[2].section == 1);
+
+  char buf[2048];
+  t.serialize(buf, sizeof buf);
+  TaskList u;
+  u.parse(buf, strlen(buf));
+  CHECK(strcmp(u.eyebrow, t.eyebrow) == 0 && strcmp(u.title, t.title) == 0 && strcmp(u.subtitle, t.subtitle) == 0);
+  CHECK(u.indicatorCount == 3 && strcmp(u.indicators[0].detail, "kar sağanağı") == 0);
+  CHECK(u.sectionCount == 3 && strcmp(u.sections[2], "Boş bölüm") == 0);
+  CHECK(u.count == 3);
+  for (int i = 0; i < 3; ++i) {
+    CHECK(strcmp(u.items[i].text, t.items[i].text) == 0);
+    CHECK(strcmp(u.items[i].time, t.items[i].time) == 0);
+    CHECK(u.items[i].done == t.items[i].done && u.items[i].section == t.items[i].section);
+  }
+}
+
+static void testUpper() {
+  char out[64];
+  utf8ToFont("salı, çğıöşü iz", out, sizeof out);
+  upperFont(out);
+  char want[64];
+  utf8ToFont("SALI, ÇĞIÖŞÜ İZ", want, sizeof want);
+  CHECK(strcmp(out, want) == 0);
+}
+
+static void testLayoutFits() {
+  App a;
+  a.tasks.loadSample();
+  // Sample: 4 tasks under "Günün akışı", 1 under "Bugün due", no indicators.
+  CHECK(a.listTop() == App::kTopNoIndicators);
+  CHECK(a.rowsFrom(0) == 5);
+  // Heading only where a section starts (or at the top of the window).
+  CHECK(a.needsHeading(0, 0) && !a.needsHeading(1, 0) && a.needsHeading(4, 0) && a.needsHeading(2, 2));
+  a.tasks.indicatorCount = 1;
+  CHECK(a.listTop() == App::kTopWithIndicators);
+  const int fit = a.rowsFrom(0);
+  int used = App::kTopWithIndicators + fit * App::kRowH + App::kSectionH * 2;
+  CHECK(used <= App::kListBottom);
+}
+
 static void testLongLineKeepsUtf8Whole() {
   char line[400] = "";
   for (int i = 0; i < 100; ++i) strcat(line, "ş");  // 2 bytes each
@@ -62,6 +133,9 @@ static void testUtf8() {
   const unsigned char want[] = {0x80, 0x81, ' ', 0x82, 0x83, ' ', 0x84, 0x85, ' ',
                                 0x86, 0x87, ' ', 0x88, 0x89, ' ', 0x8A, 0x8B, 0};
   CHECK(memcmp(out, want, sizeof want) == 0);
+  utf8ToFont("2,5 °C · a–b", out, sizeof out);
+  const unsigned char want2[] = {'2', ',', '5', ' ', 0x8D, 'C', ' ', 0x8C, ' ', 'a', 0x8E, 'b', 0};
+  CHECK(memcmp(out, want2, sizeof want2) == 0);
   utf8ToFont("a€b", out, sizeof out);
   CHECK(strcmp(out, "a?b") == 0);
   utf8ToFont("abcdef", out, 4);
@@ -73,6 +147,7 @@ static void testListNavigation() {
   a.tasks.loadSample();
   const int n = a.tasks.count;
   CHECK(n == 5);
+  CHECK(a.tasks.sectionCount == 2 && a.tasks.items[4].section == 1);
   a.onButton(Button::Up, 0);
   CHECK(a.selected == n - 1);  // wraps to the bottom
   a.onButton(Button::Down, 0);
@@ -90,11 +165,17 @@ static void testListNavigation() {
 static void testScroll() {
   App a;
   char f[400] = "";
-  for (int i = 0; i < 12; ++i) strcat(f, "x\n");
+  for (int i = 0; i < 20; ++i) strcat(f, "x\n");
   a.tasks.parse(f, strlen(f));
-  for (int i = 0; i < 9; ++i) a.onButton(Button::Down, 0);
-  CHECK(a.selected == 9);
-  CHECK(a.scroll == 9 - App::kVisibleRows + 1);
+  CHECK(a.rowsFrom(0) < 20);
+  for (int i = 0; i < 17; ++i) {
+    a.onButton(Button::Down, 0);
+    CHECK(a.selected >= a.scroll && a.selected < a.scroll + a.rowsFrom(a.scroll));  // always on screen
+  }
+  CHECK(a.selected == 17 && a.scroll > 0);
+  a.onButton(Button::Up, 0);
+  CHECK(a.selected == 16 && a.selected < a.scroll + a.rowsFrom(a.scroll));
+  a.onButton(Button::Down, 0);
   a.onButton(Button::Down, 0);
   a.onButton(Button::Down, 0);
   a.onButton(Button::Down, 0);  // wraps to 0
@@ -192,6 +273,9 @@ static void testClock() {
 int main() {
   testClock();
   testParse();
+  testBriefingFormat();
+  testUpper();
+  testLayoutFits();
   testLongLineKeepsUtf8Whole();
   testMaxTasks();
   testUtf8();

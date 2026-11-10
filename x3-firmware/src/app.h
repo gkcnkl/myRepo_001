@@ -19,7 +19,14 @@ struct Effects {
 struct App {
   static constexpr uint32_t kFocusMs = 25UL * 60UL * 1000UL;
   static constexpr uint32_t kIdleSleepMs = 3UL * 60UL * 1000UL;
-  static constexpr int kVisibleRows = 8;
+
+  // List layout (pixels, portrait 528x792), shared with ui.cpp so scrolling
+  // and drawing agree on what fits.
+  static constexpr int kTopNoIndicators = 140;
+  static constexpr int kTopWithIndicators = 296;
+  static constexpr int kListBottom = 712;
+  static constexpr int kRowH = 46;
+  static constexpr int kSectionH = 40;
 
   TaskList tasks;
   Screen screen = Screen::List;
@@ -44,6 +51,11 @@ struct App {
   Effects onTick(uint32_t nowMs);
 
   uint32_t focusElapsed(uint32_t nowMs) const;
+  int listTop() const;
+  // Does task i start a new section heading when drawn after `first`?
+  bool needsHeading(int i, int first) const;
+  // How many tasks fit on screen when the list starts at task `first` (>= 1).
+  int rowsFrom(int first) const;
   // Whole minutes left, rounded up (25 ... 1, 0 when finished).
   int focusMinutesLeft(uint32_t nowMs) const;
 

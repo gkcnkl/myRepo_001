@@ -12,9 +12,29 @@ int App::focusMinutesLeft(uint32_t nowMs) const {
   return static_cast<int>((left + 59999) / 60000);
 }
 
+int App::listTop() const { return tasks.indicatorCount > 0 ? kTopWithIndicators : kTopNoIndicators; }
+
+bool App::needsHeading(int i, int first) const {
+  const int s = tasks.items[i].section;
+  if (s < 0) return false;
+  return i == first || tasks.items[i - 1].section != s;
+}
+
+int App::rowsFrom(int first) const {
+  int y = listTop();
+  int n = 0;
+  for (int i = first; i < tasks.count; ++i) {
+    const int h = (needsHeading(i, first) ? kSectionH : 0) + kRowH;
+    if (y + h > kListBottom) break;
+    y += h;
+    ++n;
+  }
+  return n > 0 ? n : 1;
+}
+
 void App::keepSelectionVisible() {
   if (selected < scroll) scroll = selected;
-  if (selected >= scroll + kVisibleRows) scroll = selected - kVisibleRows + 1;
+  while (scroll < selected && selected >= scroll + rowsFrom(scroll)) ++scroll;
   if (scroll < 0) scroll = 0;
 }
 
