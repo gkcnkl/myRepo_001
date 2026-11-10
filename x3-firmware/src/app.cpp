@@ -44,11 +44,18 @@ Effects App::onButton(Button b, uint32_t nowMs) {
 
   if (b == Button::Power && screen != Screen::Focus) {
     fx.sleep = true;
+    fx.stopWifi = screen == Screen::Wifi;
     return fx;
   }
 
   switch (screen) {
     case Screen::List:
+      if (b == Button::Left) {
+        screen = Screen::Wifi;
+        wifiStatus[0] = '\0';
+        fx.startWifi = fx.redraw = fx.fullRefresh = true;
+        break;
+      }
       if (tasks.count == 0) {
         if (b == Button::Back) { fx.redraw = fx.fullRefresh = fx.deepClean = true; }
         break;
@@ -93,6 +100,15 @@ Effects App::onButton(Button b, uint32_t nowMs) {
       }
       break;
 
+    case Screen::Wifi:
+      if (b == Button::Back) {
+        screen = Screen::List;
+        if (selected >= tasks.count) selected = tasks.count > 0 ? tasks.count - 1 : 0;
+        keepSelectionVisible();
+        fx.stopWifi = fx.redraw = fx.fullRefresh = true;
+      }
+      break;
+
     case Screen::FocusDone:
       if (b == Button::Confirm) {
         if (focusTask >= 0 && focusTask < tasks.count) {
@@ -124,6 +140,10 @@ Effects App::onTick(uint32_t nowMs) {
     }
     return fx;
   }
-  if (nowMs - lastInputMs >= kIdleSleepMs) fx.sleep = true;
+  const uint32_t idle = screen == Screen::Wifi ? kWifiIdleMs : kIdleSleepMs;
+  if (nowMs - lastInputMs >= idle) {
+    fx.sleep = true;
+    fx.stopWifi = screen == Screen::Wifi;
+  }
   return fx;
 }

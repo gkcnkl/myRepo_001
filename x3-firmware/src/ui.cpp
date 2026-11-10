@@ -12,6 +12,8 @@
 #include "fonts/Play46.h"
 #include "text.h"
 
+#include <qrcode.h>
+
 // Visual language of the "Sabah Brifingi" artifact, translated to 1-bit
 // e-ink: Playfair Display for titles, numbers and times; Inter for body text;
 // letter-spaced uppercase labels; a 2px rule under the masthead, 1px rules
@@ -376,6 +378,47 @@ void drawFocusDone(Adafruit_GFX& g, const App& app) {
   }
   textCentered(g, &Play26, "Bu görevi bitirdin mi?", 420);
   statusBar(g, "Tamam · evet, işaretle", "Geri · hayır", nullptr);
+}
+
+void drawWifi(Adafruit_GFX& g, const App& app) {
+  g.fillScreen(0);
+  masthead(g, app, "WI-FI aktarım", "Bağlan", false);
+
+  sectionHeading(g, "1 · Telefon kamerasıyla okut", 166);
+  // Standard Wi-Fi QR payload: phones offer to join the network directly.
+  char payload[96];
+  snprintf(payload, sizeof payload, "WIFI:T:WPA;S:%s;P:%s;;", app.wifiSsid, app.wifiPass);
+  QRCode qr;
+  uint8_t qrData[qrcode_getBufferSize(4)];
+  if (qrcode_initText(&qr, qrData, 4, ECC_LOW, payload) == 0) {
+    const int16_t scale = 5;
+    const int16_t size = qr.size * scale;
+    const int16_t x0 = (kW - size) / 2, y0 = 186;
+    for (uint8_t y = 0; y < qr.size; ++y)
+      for (uint8_t x = 0; x < qr.size; ++x)
+        if (qrcode_getModule(&qr, x, y)) g.fillRect(x0 + x * scale, y0 + y * scale, scale, scale, 1);
+  }
+
+  sectionHeading(g, "2 · Ya da elle bağlan", 392);
+  label(g, "Ağ", kM, 428);
+  text(g, &Play26, app.wifiSsid, kM + 110, 432);
+  hairline(g, kM, 446, kW - 2 * kM);
+  label(g, "Şifre", kM, 476);
+  text(g, &Play26, app.wifiPass, kM + 110, 480);
+
+  sectionHeading(g, "3 · Tarayıcıda aç", 532);
+  text(g, &Play26, app.wifiUrl, kM, 576);
+  text(g, &Inter14, "Sayfa açılınca cihazın saati de ayarlanır.", kM, 602);
+
+  if (app.wifiStatus[0]) {
+    Encoded e(app.wifiStatus, true);
+    fitWidth(g, &InterSemi12, e.s, kW - 2 * kM - 30);
+    const uint16_t w = trackedWidth(&InterSemi12, e.s, 2) + 24;
+    g.drawRoundRect((kW - w) / 2, 650, w, 26, 13, 1);
+    drawTracked(g, &InterSemi12, e.s, (kW - w) / 2 + 12, 668, 2, 1);
+  }
+
+  statusBar(g, "Geri · çık", "WI-FI açık", "10 dk kullanılmazsa kapanır");
 }
 
 }  // namespace ui

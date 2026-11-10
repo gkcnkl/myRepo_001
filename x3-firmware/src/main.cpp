@@ -1,8 +1,8 @@
-// Xteink X3 — "Bugün" day planner + 25-minute focus timer.
+// Xteink X3 — daily briefing + 25-minute focus timer.
 //
-// Tasks come from /gorevler.txt on the SD card (created with sample tasks if
-// missing). Hardware glue only: the app logic lives in app.cpp, drawing in
-// ui.cpp. Button layout: docs-hardware.md.
+// The briefing comes from /brifing.txt on the SD card (created with a sample
+// if missing) or from the Wi-Fi transfer page. Hardware glue only: the app
+// logic lives in app.cpp, drawing in ui.cpp. Button layout: docs-hardware.md.
 
 #include <Adafruit_GFX.h>
 #include <Arduino.h>
@@ -14,12 +14,16 @@
 #include <Rtc.h>
 #include <SDCardManager.h>
 #include <SPI.h>
+#include <WebServer.h>
+#include <WiFi.h>
 #include <XteinkDetect.h>
 #include <driver/gpio.h>
+#include <esp_random.h>
 
 #include "app.h"
 #include "clock.h"
 #include "ui.h"
+#include "webpage.h"
 
 namespace {
 
@@ -41,6 +45,8 @@ const char* tasksPath = kBriefingPath;  // the file we loaded and write back to
 constexpr const char* kSetTimePath = "/saat.txt";  // "10.11.2026 15:30": sets the RTC once
 constexpr uint32_t kBatteryPollMs = 30000;
 constexpr int kFastRefreshesBeforeFull = 20;
+constexpr const char* kHotspotName = "X3-Brifing";
+constexpr size_t kMaxUpload = 8000;
 
 EInkDisplay epd(PIN_SCLK, PIN_MOSI, PIN_CS, PIN_DC, PIN_RST, PIN_BUSY);
 InputManager input;
@@ -48,6 +54,9 @@ freeink::Rtc rtc;
 App app;
 int fastRefreshes = 0;
 bool waitingForRelease = true;  // ignore the press that woke the device
+WebServer server(80);
+bool wifiOn = false;
+bool webRedraw = false;  // the web page changed something on screen
 
 // Adafruit_GFX canvas that draws straight into the SDK framebuffer
 // (792x528 native, row-major, MSB-first, 1 = white).
@@ -104,6 +113,21 @@ void saveTasks() {
   if (!SdMan.writeFile(tasksPath, String(buf))) Serial.println("[x3] save failed");
 }
 
+bool setClock(const LocalTime& t) {
+  if (!rtc.present()) return false;
+  freeink::Rtc::DateTime dt;
+  dt.year = t.year;
+  dt.month = t.month;
+  dt.day = t.day;
+  dt.hour = t.hour;
+  dt.minute = t.minute;
+  dt.second = t.second;
+  dt.weekday = static_cast<uint8_t>(weekdayOf(t.year, t.month, t.day));
+  if (!rtc.set(dt)) return false;
+  Serial.printf("[x3] clock set to %04u-%02u-%02u %02u:%02u\n", t.year, t.month, t.day, t.hour, t.minute);
+  return true;
+}
+
 // If /saat.txt exists, set the RTC from it and delete it.
 void applySetTimeFile() {
   if (!app.sdAvailable || !rtc.present()) return;
@@ -113,20 +137,9 @@ void applySetTimeFile() {
   const int n = f.read(buf, sizeof buf);
   f.close();
   LocalTime t;
-  if (n > 0 && parseSetTime(buf, static_cast<size_t>(n), t)) {
-    freeink::Rtc::DateTime dt;
-    dt.year = t.year;
-    dt.month = t.month;
-    dt.day = t.day;
-    dt.hour = t.hour;
-    dt.minute = t.minute;
-    dt.second = t.second;
-    dt.weekday = static_cast<uint8_t>(weekdayOf(t.year, t.month, t.day));
-    if (rtc.set(dt)) {
-      Serial.printf("[x3] clock set to %04u-%02u-%02u %02u:%02u\n", t.year, t.month, t.day, t.hour, t.minute);
-      SdMan.remove(kSetTimePath);
-      return;
-    }
+  if (n > 0 && parseSetTime(buf, static_cast<size_t>(n), t) && setClock(t)) {
+    SdMan.remove(kSetTimePath);
+    return;
   }
   Serial.println("[x3] /saat.txt not understood, left in place");
 }
@@ -176,6 +189,7 @@ void render(bool screenChange, bool deepClean = false) {
     case Screen::List: ui::drawList(screen, app, false); break;
     case Screen::Focus: ui::drawFocus(screen, app, millis()); break;
     case Screen::FocusDone: ui::drawFocusDone(screen, app); break;
+    case Screen::Wifi: ui::drawWifi(screen, app); break;
   }
   if (screenChange || ++fastRefreshes >= kFastRefreshesBeforeFull) {
     fastRefreshes = 0;
@@ -185,8 +199,93 @@ void render(bool screenChange, bool deepClean = false) {
   }
 }
 
+// --- Wi-Fi transfer: hotspot + web page --------------------------------------
+
+void handlePage() { server.send_P(200, "text/html; charset=utf-8", kTransferPage); }
+
+void handleGetBriefing() {
+  static char buf[8192];
+  app.tasks.serialize(buf, sizeof buf);
+  server.send(200, "text/plain; charset=utf-8", buf);
+}
+
+void handlePostBriefing() {
+  const String& body = server.arg("plain");
+  if (body.length() == 0 || body.length() > kMaxUpload) {
+    server.send(413, "text/plain; charset=utf-8", "Dosya boş ya da çok büyük (en çok 8 KB).");
+    return;
+  }
+  app.tasks.parse(body.c_str(), body.length());
+  app.selected = 0;
+  app.scroll = 0;
+  tasksPath = kBriefingPath;
+  saveTasks();
+  char msg[96];
+  snprintf(msg, sizeof msg, "Brifing alındı · %d görev", app.tasks.count);
+  snprintf(app.wifiStatus, sizeof app.wifiStatus, "%s", msg);
+  app.touch(millis());
+  webRedraw = true;
+  if (!app.sdAvailable) {
+    snprintf(msg, sizeof msg, "Ekrana yüklendi (%d görev), SD kart yok: kapanınca silinir.", app.tasks.count);
+  } else {
+    snprintf(msg, sizeof msg, "Kaydedildi: %d görev. Cihaz ekranı yenileniyor.", app.tasks.count);
+  }
+  server.send(200, "text/plain; charset=utf-8", msg);
+}
+
+void handlePostTime() {
+  const String& body = server.arg("plain");
+  LocalTime t;
+  if (!parseSetTime(body.c_str(), body.length(), t)) {
+    server.send(400, "text/plain; charset=utf-8", "Saat anlaşılamadı.");
+    return;
+  }
+  if (!setClock(t)) {
+    server.send(500, "text/plain; charset=utf-8", "Saat çipine yazılamadı.");
+    return;
+  }
+  app.touch(millis());
+  webRedraw = true;  // the header date may change
+  char msg[64];
+  snprintf(msg, sizeof msg, "Cihaz saati ayarlandı: %02u.%02u.%04u %02u:%02u", t.day, t.month, t.year, t.hour,
+           t.minute);
+  server.send(200, "text/plain; charset=utf-8", msg);
+}
+
+void startWifi() {
+  if (wifiOn) return;
+  // A fresh 8-digit password each time the hotspot opens.
+  snprintf(app.wifiPass, sizeof app.wifiPass, "%08lu", static_cast<unsigned long>(esp_random() % 100000000UL));
+  snprintf(app.wifiSsid, sizeof app.wifiSsid, "%s", kHotspotName);
+  WiFi.mode(WIFI_AP);
+  if (!WiFi.softAP(app.wifiSsid, app.wifiPass)) {
+    snprintf(app.wifiStatus, sizeof app.wifiStatus, "Wi-Fi açılamadı");
+    return;
+  }
+  snprintf(app.wifiUrl, sizeof app.wifiUrl, "http://%s", WiFi.softAPIP().toString().c_str());
+  server.on("/", HTTP_GET, handlePage);
+  server.on("/brifing.txt", HTTP_GET, handleGetBriefing);
+  server.on("/brifing", HTTP_POST, handlePostBriefing);
+  server.on("/saat", HTTP_POST, handlePostTime);
+  server.onNotFound([] { server.send(404, "text/plain; charset=utf-8", "Yok"); });
+  server.begin();
+  wifiOn = true;
+  Serial.printf("[x3] hotspot %s up at %s\n", app.wifiSsid, app.wifiUrl);
+}
+
+void stopWifi() {
+  if (!wifiOn) return;
+  server.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_OFF);
+  wifiOn = false;
+  Serial.println("[x3] hotspot off");
+}
+
 [[noreturn]] void goToSleep() {
   Serial.println("[x3] sleep");
+  stopWifi();
+  if (app.screen == Screen::Wifi) app.screen = Screen::List;
   // This image stays on the panel while off, so clean first: no ghosts.
   cleanPanel();
   updateStatus();
@@ -256,6 +355,8 @@ void loop() {
       const Screen before = app.screen;
       const Effects fx = app.onButton(static_cast<Button>(b), now);
       if (fx.sleep) goToSleep();
+      if (fx.stopWifi) stopWifi();
+      if (fx.startWifi) startWifi();
       if (fx.save) saveTasks();
       if (fx.redraw) render(fx.fullRefresh || app.screen != before, fx.deepClean);
       break;
@@ -269,5 +370,15 @@ void loop() {
     if (fx.sleep) goToSleep();
     if (fx.redraw) render(fx.fullRefresh);
   }
-  delay(10);
+
+  if (wifiOn) {
+    server.handleClient();
+    if (webRedraw) {
+      webRedraw = false;
+      render(false);
+    }
+    delay(2);
+  } else {
+    delay(10);
+  }
 }

@@ -56,6 +56,12 @@ int main(int argc, char** argv) {
   app.screen = Screen::List;
   { Canvas c; ui::drawList(c, app, true); c.save(out, "5-sleep"); }
 
+  strcpy(app.wifiSsid, "X3-Brifing");
+  strcpy(app.wifiPass, "48213907");
+  strcpy(app.wifiUrl, "http://192.168.4.1");
+  strcpy(app.wifiStatus, "Brifing alındı · 12 görev");
+  { Canvas c; ui::drawWifi(c, app); c.save(out, "7-wifi"); }
+
   App empty;  // clock not set, battery charging
   empty.batteryPercent = 37;
   empty.charging = true;

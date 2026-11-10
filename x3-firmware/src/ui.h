@@ -14,5 +14,7 @@ namespace ui {
 void drawList(Adafruit_GFX& g, const App& app, bool sleeping);
 void drawFocus(Adafruit_GFX& g, const App& app, uint32_t nowMs);
 void drawFocusDone(Adafruit_GFX& g, const App& app);
+// Hotspot details, a Wi-Fi QR code for phones and the page address.
+void drawWifi(Adafruit_GFX& g, const App& app);
 
 }  // namespace ui

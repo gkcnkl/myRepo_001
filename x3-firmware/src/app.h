@@ -6,7 +6,7 @@
 // Hardware-independent app state machine. main.cpp feeds it button presses
 // and time; it says what to redraw, save or do next.
 enum class Button : uint8_t { Back, Confirm, Left, Right, Up, Down, Power };
-enum class Screen : uint8_t { List, Focus, FocusDone };
+enum class Screen : uint8_t { List, Focus, FocusDone, Wifi };
 
 struct Effects {
   bool redraw = false;
@@ -14,11 +14,15 @@ struct Effects {
   bool deepClean = false;    // white pass first: removes all ghosting
   bool save = false;         // task list changed, write the SD file
   bool sleep = false;        // enter deep sleep
+  bool startWifi = false;    // open the transfer hotspot + web page
+  bool stopWifi = false;     // close it again
 };
 
 struct App {
   static constexpr uint32_t kFocusMs = 25UL * 60UL * 1000UL;
   static constexpr uint32_t kIdleSleepMs = 3UL * 60UL * 1000UL;
+  // The transfer page is used from a phone, not the buttons: allow longer.
+  static constexpr uint32_t kWifiIdleMs = 10UL * 60UL * 1000UL;
 
   // List layout (pixels, portrait 528x792), shared with ui.cpp so scrolling
   // and drawing agree on what fits.
@@ -46,6 +50,15 @@ struct App {
   char dateText[48] = "";  // "Salı, 10 Kasım"; empty when the clock is not set
   int batteryPercent = -1;  // -1 = unknown
   bool charging = false;
+
+  // Wi-Fi transfer screen, filled by main.cpp.
+  char wifiSsid[24] = "";
+  char wifiPass[16] = "";
+  char wifiUrl[32] = "";
+  char wifiStatus[80] = "";
+
+  // Call when the web page did something, so the idle timer restarts.
+  void touch(uint32_t nowMs) { lastInputMs = nowMs; }
 
   Effects onButton(Button b, uint32_t nowMs);
   Effects onTick(uint32_t nowMs);

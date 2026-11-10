@@ -230,6 +230,33 @@ static void testIdleSleep() {
   CHECK(a.onTick(1000 + App::kIdleSleepMs).sleep);
 }
 
+static void testWifiFlow() {
+  App a;
+  a.tasks.loadSample();
+  Effects fx = a.onButton(Button::Left, 0);
+  CHECK(a.screen == Screen::Wifi && fx.startWifi && fx.redraw);
+  CHECK(!a.onButton(Button::Down, 0).redraw);  // list keys do nothing here
+  // The page restarts the idle timer; 10 minutes without use closes it.
+  a.touch(5 * 60000);
+  CHECK(!a.onTick(5 * 60000 + App::kIdleSleepMs).sleep);  // the short list timeout does not apply
+  fx = a.onTick(5 * 60000 + App::kWifiIdleMs);
+  CHECK(fx.sleep && fx.stopWifi);
+
+  App b;
+  b.tasks.loadSample();
+  b.selected = 4;
+  b.onButton(Button::Left, 0);
+  b.tasks.parse("[ ] tek\n", 8);  // an upload replaced the list with one task
+  fx = b.onButton(Button::Back, 1000);
+  CHECK(b.screen == Screen::List && fx.stopWifi && fx.redraw);
+  CHECK(b.selected == 0);
+  fx = b.onButton(Button::Left, 2000);
+  CHECK(b.onButton(Button::Power, 3000).stopWifi);
+
+  App empty;  // works with an empty list too
+  CHECK(empty.onButton(Button::Left, 0).startWifi);
+}
+
 static void testEmptyList() {
   App a;
   CHECK(!a.onButton(Button::Confirm, 0).save);
@@ -285,6 +312,7 @@ int main() {
   testFocusCancel();
   testIdleSleep();
   testEmptyList();
+  testWifiFlow();
   if (failures) {
     printf("%d check(s) failed\n", failures);
     return 1;
