@@ -33,6 +33,8 @@ int main(int argc, char** argv) {
   app.tasks.items[0].done = true;
   app.tasks.items[2].done = true;
   app.selected = 1;
+  strcpy(app.dateText, "Salı, 10 Kasım");
+  app.batteryPercent = 84;
 
   { Canvas c; ui::drawList(c, app, false); c.save(out, "1-list"); }
 
@@ -45,7 +47,9 @@ int main(int argc, char** argv) {
   app.screen = Screen::List;
   { Canvas c; ui::drawList(c, app, true); c.save(out, "5-sleep"); }
 
-  App empty;
+  App empty;  // clock not set, battery charging
+  empty.batteryPercent = 37;
+  empty.charging = true;
   { Canvas c; ui::drawList(c, empty, false); c.save(out, "6-empty"); }
   return 0;
 }

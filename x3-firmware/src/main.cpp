@@ -6,16 +6,19 @@
 
 #include <Adafruit_GFX.h>
 #include <Arduino.h>
+#include <BatteryMonitor.h>
 #include <BoardConfig.h>
 #include <EInkDisplay.h>
 #include <InputManager.h>
 #include <PowerManager.h>
+#include <Rtc.h>
 #include <SDCardManager.h>
 #include <SPI.h>
 #include <XteinkDetect.h>
 #include <driver/gpio.h>
 
 #include "app.h"
+#include "clock.h"
 #include "ui.h"
 
 namespace {
@@ -32,10 +35,13 @@ constexpr int PIN_BUSY = 6;
 constexpr gpio_num_t PIN_POWER_LATCH = GPIO_NUM_13;
 
 constexpr const char* kTasksPath = "/gorevler.txt";
+constexpr const char* kSetTimePath = "/saat.txt";  // "10.11.2026 15:30": sets the RTC once
+constexpr uint32_t kBatteryPollMs = 30000;
 constexpr int kFastRefreshesBeforeFull = 20;
 
 EInkDisplay epd(PIN_SCLK, PIN_MOSI, PIN_CS, PIN_DC, PIN_RST, PIN_BUSY);
 InputManager input;
+freeink::Rtc rtc;
 App app;
 int fastRefreshes = 0;
 bool waitingForRelease = true;  // ignore the press that woke the device
@@ -94,6 +100,61 @@ void saveTasks() {
   if (!SdMan.writeFile(kTasksPath, String(buf))) Serial.println("[x3] save failed");
 }
 
+// If /saat.txt exists, set the RTC from it and delete it.
+void applySetTimeFile() {
+  if (!app.sdAvailable || !rtc.present()) return;
+  FsFile f = SdMan.open(kSetTimePath, O_RDONLY);
+  if (!f) return;
+  char buf[64];
+  const int n = f.read(buf, sizeof buf);
+  f.close();
+  LocalTime t;
+  if (n > 0 && parseSetTime(buf, static_cast<size_t>(n), t)) {
+    freeink::Rtc::DateTime dt;
+    dt.year = t.year;
+    dt.month = t.month;
+    dt.day = t.day;
+    dt.hour = t.hour;
+    dt.minute = t.minute;
+    dt.second = t.second;
+    dt.weekday = static_cast<uint8_t>(weekdayOf(t.year, t.month, t.day));
+    if (rtc.set(dt)) {
+      Serial.printf("[x3] clock set to %04u-%02u-%02u %02u:%02u\n", t.year, t.month, t.day, t.hour, t.minute);
+      SdMan.remove(kSetTimePath);
+      return;
+    }
+  }
+  Serial.println("[x3] /saat.txt not understood, left in place");
+}
+
+// Refreshes the date and battery fields shown in the header.
+void updateStatus() {
+  app.dateText[0] = '\0';
+  freeink::Rtc::DateTime dt;
+  if (rtc.present() && rtc.now(dt)) {
+    LocalTime t;
+    t.year = dt.year;
+    t.month = dt.month;
+    t.day = dt.day;
+    t.hour = dt.hour;
+    t.minute = dt.minute;
+    t.second = dt.second;
+    formatTurkishDate(t, app.dateText, sizeof app.dateText);
+  }
+
+  static uint32_t lastBatteryMs = 0;
+  static bool batteryRead = false;
+  const uint32_t now = millis();
+  if (!batteryRead || now - lastBatteryMs >= kBatteryPollMs) {
+    static const BatteryMonitor battery;
+    uint16_t percent = 0;
+    if (battery.readPercentageChecked(percent)) app.batteryPercent = percent;
+    app.charging = battery.isCharging();
+    lastBatteryMs = now;
+    batteryRead = true;
+  }
+}
+
 // Drives every pixel to white, then the next frame paints on a clean panel.
 // The X3 driver's FULL mode assumes a white previous frame, so it can leave
 // ghosts; HALF drives each pixel to its target regardless of the old image.
@@ -106,6 +167,7 @@ void cleanPanel() {
 // screenChange -> HALF refresh; deepClean -> white pass first (no ghosts).
 void render(bool screenChange, bool deepClean = false) {
   if (deepClean) cleanPanel();
+  updateStatus();
   switch (app.screen) {
     case Screen::List: ui::drawList(screen, app, false); break;
     case Screen::Focus: ui::drawFocus(screen, app, millis()); break;
@@ -123,6 +185,7 @@ void render(bool screenChange, bool deepClean = false) {
   Serial.println("[x3] sleep");
   // This image stays on the panel while off, so clean first: no ghosts.
   cleanPanel();
+  updateStatus();
   ui::drawList(screen, app, true);
   epd.displayBuffer(EInkDisplay::HALF_REFRESH);
   epd.deepSleep();
@@ -170,7 +233,9 @@ void setup() {
   epd.requestResync();
   screen.setRotation(3);  // portrait 528x792, upright on the X3
 
+  rtc.begin();
   loadTasks();
+  applySetTimeFile();
   app.lastInputMs = millis();
   render(true, /*deepClean=*/true);
 }

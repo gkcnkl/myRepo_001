@@ -14,8 +14,7 @@ namespace ui {
 namespace {
 
 constexpr int16_t kMargin = 32;
-constexpr int16_t kHeaderBottom = 104;
-constexpr int16_t kRowsTop = 128;
+constexpr int16_t kRowsTop = 142;
 constexpr int16_t kRowH = 66;
 constexpr int16_t kFooterTop = 704;
 constexpr int16_t kCheck = 26;
@@ -125,6 +124,40 @@ void progressBar(Adafruit_GFX& g, int16_t x, int16_t y, int16_t w, int16_t h, in
   if (den > 0 && num > 0) g.fillRect(x, y, static_cast<int16_t>(static_cast<int32_t>(w) * num / den), h, 1);
 }
 
+// Battery icon + "%84" right-aligned at `right`, text baseline at y.
+void battery(Adafruit_GFX& g, const App& app, int16_t right, int16_t y) {
+  if (app.batteryPercent < 0) return;
+  char label[24];
+  snprintf(label, sizeof label, app.charging ? "%%%d şarj" : "%%%d", app.batteryPercent);
+  Encoded e(label);
+  g.setFont(&Inter17);
+  g.setTextColor(1);
+  const int16_t tw = widthOf(g, e.s);
+  g.setCursor(right - tw, y);
+  g.print(e.s);
+
+  constexpr int16_t bw = 30, bh = 15;
+  const int16_t bx = right - tw - 10 - bw - 3;
+  const int16_t by = y - bh + 1;
+  g.drawRect(bx, by, bw, bh, 1);
+  g.fillRect(bx + bw, by + 4, 3, bh - 8, 1);  // terminal nub
+  const int16_t fill = static_cast<int16_t>((bw - 4) * (app.batteryPercent > 100 ? 100 : app.batteryPercent) / 100);
+  if (fill > 0) g.fillRect(bx + 2, by + 2, fill, bh - 4, 1);
+}
+
+// Title row shared by the list and the sleep screen.
+void header(Adafruit_GFX& g, const App& app) {
+  const TaskList& t = app.tasks;
+  text(g, &InterBold34, "Bugün", kMargin, 54);
+  char count[24];
+  snprintf(count, sizeof count, "%d / %d", t.doneCount(), t.count);
+  textRight(g, &InterSemi22, count, g.width() - kMargin, 52);
+
+  text(g, &Inter17, app.dateText[0] ? app.dateText : "Tarih ayarlı değil", kMargin, 88);
+  battery(g, app, g.width() - kMargin, 88);
+  progressBar(g, kMargin, 104, g.width() - 2 * kMargin, 10, t.doneCount(), t.count);
+}
+
 void footer(Adafruit_GFX& g, const char* line1, const char* line2) {
   g.drawFastHLine(kMargin, kFooterTop, g.width() - 2 * kMargin, 1);
   textCentered(g, &Inter17, line1, kFooterTop + 36);
@@ -137,11 +170,7 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
   g.fillScreen(0);
   const TaskList& t = app.tasks;
 
-  text(g, &InterBold34, "Bugün", kMargin, 62);
-  char count[24];
-  snprintf(count, sizeof count, "%d / %d", t.doneCount(), t.count);
-  textRight(g, &InterSemi22, count, g.width() - kMargin, 60);
-  progressBar(g, kMargin, 82, g.width() - 2 * kMargin, 10, t.doneCount(), t.count);
+  header(g, app);
 
   if (t.count == 0) {
     textCentered(g, &InterSemi22, "Görev yok", 330);
@@ -176,7 +205,7 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
   }
 
   // Scroll hints when the list is longer than the screen.
-  if (app.scroll > 0) textRight(g, &Inter17, "yukarıda daha var", g.width() - kMargin, kRowsTop - 6);
+  if (app.scroll > 0) textRight(g, &Inter17, "yukarıda daha var", g.width() - kMargin, kRowsTop - 4);
   if (last < t.count) textRight(g, &Inter17, "aşağıda daha var", g.width() - kMargin, kFooterTop - 12);
 
   if (sleeping) {

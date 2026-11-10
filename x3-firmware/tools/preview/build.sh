@@ -5,5 +5,5 @@ G=".pio/libdeps/x3/Adafruit GFX Library"
 OUT="${1:-.}"
 mkdir -p "$OUT"
 g++ -std=c++17 -O1 -w -Itools/preview/shim -I"$G" \
-  tools/preview/preview.cpp src/ui.cpp src/app.cpp src/tasks.cpp src/text.cpp "$G/Adafruit_GFX.cpp" -o "$OUT/x3-preview"
+  tools/preview/preview.cpp src/ui.cpp src/app.cpp src/tasks.cpp src/text.cpp src/clock.cpp "$G/Adafruit_GFX.cpp" -o "$OUT/x3-preview"
 "$OUT/x3-preview" "$OUT"

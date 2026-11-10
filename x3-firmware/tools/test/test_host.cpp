@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "../../src/app.h"
+#include "../../src/clock.h"
 #include "../../src/tasks.h"
 #include "../../src/text.h"
 
@@ -155,7 +156,41 @@ static void testEmptyList() {
   CHECK(a.screen == Screen::List);
 }
 
+static void testClock() {
+  CHECK(weekdayOf(2026, 11, 10) == 2);  // Tuesday
+  CHECK(weekdayOf(2024, 2, 29) == 4);   // Thursday
+  CHECK(weekdayOf(2027, 1, 3) == 0);    // Sunday
+
+  LocalTime t;
+  t.year = 2026, t.month = 11, t.day = 10;
+  char buf[64];
+  formatTurkishDate(t, buf, sizeof buf);
+  CHECK(strcmp(buf, "Salı, 10 Kasım") == 0);
+  t.year = 2027, t.month = 2, t.day = 3;
+  formatTurkishDate(t, buf, sizeof buf);
+  CHECK(strcmp(buf, "Çarşamba, 3 Şubat") == 0);
+
+  LocalTime never;  // RTC never set reads 2000-01-01
+  never.year = 2000, never.month = 1, never.day = 1;
+  formatTurkishDate(never, buf, sizeof buf);
+  CHECK(buf[0] == '\0');
+  t.year = 2026, t.month = 2, t.day = 29;
+  CHECK(!isPlausible(t));
+
+  LocalTime p;
+  const char* a = "\xEF\xBB\xBF 10.11.2026 15:30\r\n";
+  CHECK(parseSetTime(a, strlen(a), p));
+  CHECK(p.year == 2026 && p.month == 11 && p.day == 10 && p.hour == 15 && p.minute == 30 && p.second == 0);
+  const char* b = "2026-11-10 09:05:42";
+  CHECK(parseSetTime(b, strlen(b), p));
+  CHECK(p.hour == 9 && p.minute == 5 && p.second == 42);
+  const char* bad[] = {"10.11.2026", "31.02.2026 10:00", "10.11.2026 25:00", "yarın 10:00", "10/11/2026 10:00",
+                       "10.11.2026 10:00 x"};
+  for (const char* s : bad) CHECK(!parseSetTime(s, strlen(s), p));
+}
+
 int main() {
+  testClock();
   testParse();
   testLongLineKeepsUtf8Whole();
   testMaxTasks();

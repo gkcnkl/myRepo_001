@@ -35,6 +35,11 @@ struct App {
   uint32_t lastInputMs = 0;
   bool sdAvailable = true;
 
+  // Status line, filled by main.cpp before each render.
+  char dateText[48] = "";  // "Salı, 10 Kasım"; empty when the clock is not set
+  int batteryPercent = -1;  // -1 = unknown
+  bool charging = false;
+
   Effects onButton(Button b, uint32_t nowMs);
   Effects onTick(uint32_t nowMs);
 
