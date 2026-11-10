@@ -9,6 +9,7 @@
 #include <render/PageRenderer.h>
 #include <render/TtfFont.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <text/Hyphenator.h>
 #include <text/hyph_en_us.h>
@@ -16,6 +17,42 @@
 #include "font_literata_bold.h"
 #include "font_literata_regular.h"
 #include "hyph_tr.h"
+
+// --- Glyph rasterizer memory (see stbtt_alloc.h) --------------------------------
+namespace {
+struct RasterPool {
+  uint8_t* base = nullptr;
+  size_t size = 0;
+  size_t used = 0;
+  int live = 0;  // outstanding allocations; the pool rewinds when it reaches 0
+} gPool;
+}  // namespace
+
+extern "C" void* x3_stbtt_malloc(size_t size) {
+  RasterPool& p = gPool;
+  if (p.base != nullptr) {
+    const size_t at = (p.used + 7) & ~static_cast<size_t>(7);
+    if (at <= p.size && size <= p.size - at) {
+      p.used = at + size;
+      ++p.live;
+      return p.base + at;
+    }
+  }
+  return malloc(size);
+}
+
+extern "C" void x3_stbtt_free(void* ptr) {
+  RasterPool& p = gPool;
+  auto* b = static_cast<uint8_t*>(ptr);
+  if (p.base != nullptr && b >= p.base && b < p.base + p.size) {
+    if (--p.live <= 0) {
+      p.live = 0;
+      p.used = 0;
+    }
+    return;
+  }
+  free(ptr);
+}
 
 namespace reader {
 
@@ -75,6 +112,7 @@ struct BookReader::Impl {
   bool isText = false;
 
   Arena bookArena, scratch, parse, glyphArena, boldGlyphArena, indexArena, sheetArena;
+  uint8_t* parseBase = nullptr;  // the parse arena follows the scratch arena in one block
   Book book;
   TtfFont regular, bold;
   FontChain fonts;
@@ -117,6 +155,7 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
 
   m.scratch.init(mem.big, kScratchArena);
   m.parse.init(mem.big + kScratchArena, kParseArena);
+  m.parseBase = mem.big + kScratchArena;
   m.bookArena.init(mem.book, mem.bookSize);
   m.glyphArena.init(mem.glyph, mem.glyphSize);
   const bool haveBold = mem.bold != nullptr && mem.boldSize > 0;
@@ -323,22 +362,40 @@ bool BookReader::render(uint8_t* fb) {
   if (m.pages.readPage(page_, m.scratch, &page) != BookStatus::Ok) return false;
   FrameTarget target{fb, kPageH, kPageW, kPageH / 8, FrameFormat::Mono1Sharp, FrameRotation::Portrait};
   const ZipCatalog& zip = m.book.zip();
-  // Decode images only when they are small enough for the C3.
+  // Images first (they decode through the scratch arena), only when small
+  // enough for the C3; otherwise a framed placeholder.
   bool imagesOk = true;
   for (uint16_t i = 0; i < page.imageCount && !m.isText; ++i) {
     const ZipEntry* e = zip.find(page.images[i].href);
     if (e == nullptr || e->uncompressedSize > kMaxImageBytes) imagesOk = false;
   }
   BookStatus st = BookStatus::Ok;
-  if (imagesOk) {
-    st = PageRenderer::render(page, m.fonts, *m.source, zip, m.scratch, target);
-  } else {
-    PageRenderer::renderText(page, m.fonts, target);
-    for (uint16_t i = 0; i < page.imageCount; ++i) {
-      const PageImage& im = page.images[i];
-      placeholder(fb, im.x, im.y, static_cast<int16_t>(im.width), static_cast<int16_t>(im.height));
+  if (page.imageCount > 0 && !m.isText) {
+    if (imagesOk) {
+      const size_t mark = m.scratch.mark();
+      st = PageRenderer::renderImages(page, *m.source, zip, m.scratch, target);
+      m.scratch.release(mark);
+    } else {
+      for (uint16_t i = 0; i < page.imageCount; ++i) {
+        const PageImage& im = page.images[i];
+        placeholder(fb, im.x, im.y, static_cast<int16_t>(im.width), static_cast<int16_t>(im.height));
+      }
     }
   }
+  // Then text. The glyph rasterizer's scratch memory comes from the rest of
+  // the scratch arena plus the parse arena right after it (one contiguous
+  // region of the big block; the parse arena is idle while drawing).
+  const size_t tail = m.scratch.capacity() - m.scratch.mark();
+  uint8_t* poolBase = static_cast<uint8_t*>(m.scratch.alloc(tail > 64 ? tail - 64 : 0, 8));
+  m.parse.reset();
+  if (poolBase != nullptr) {
+    gPool.base = poolBase;
+    gPool.size = static_cast<size_t>((m.parseBase + m.parse.capacity()) - poolBase);
+    gPool.used = 0;
+    gPool.live = 0;
+  }
+  PageRenderer::renderText(page, m.fonts, target);
+  gPool = RasterPool{};
   m.scratch.reset();
   return st == BookStatus::Ok;
 }

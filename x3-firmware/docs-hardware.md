@@ -29,5 +29,9 @@ glif çizici arenaların dışında, genel heap'ten ~20 KB'a kadar bellek ister
   önce zorunlu en küçükler (katalog 8, font 6, dizin 2 KB), sonra öncelikle
   font 12, katalog 16, dizin 6, gerçek kalın font 8 (yoksa çift baskı),
   CSS 2 KB (yoksa kitabın CSS'i atlanır).
-Kitap kapanınca hepsi bırakılır. Loop yığını 16 KB. Wi-Fi'dan çıkınca cihaz
+Glif çizici (stb_truetype) bir harf çizerken 2000 kayıtlık kenar tablosu ister:
+32 bit C3'te tek parça ~56 KB (64 bit PC'de 25 KB). Bu istek `stbtt_alloc.h`
+ile genel heap yerine sayfa çizilirken boşta duran ayrıştırma alanından (+
+sayfalama alanının boş kalan kısmı, ~100 KB bitişik) karşılanır; stb her
+harften sonra hepsini bırakır. Kitap kapanınca hepsi bırakılır. Loop yığını 16 KB. Wi-Fi'dan çıkınca cihaz
 kendini yeniden başlatır (temiz heap).
