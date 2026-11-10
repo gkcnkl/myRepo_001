@@ -100,10 +100,10 @@ biçim anlaşılmamıştır (`2026-11-10 15:30` biçimi de kabul edilir).
 
 ## Hazır imajı yükleme (Windows)
 
-`release/x3-bugun-v0.9.1.bin` dosyasını esptool klasörüne kopyala, sonra:
+`release/x3-bugun-v0.9.2.bin` dosyasını esptool klasörüne kopyala, sonra:
 
 ```bash
-esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.9.1.bin
+esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.9.2.bin
 ```
 
 ## Fabrika firmware'ine dönüş

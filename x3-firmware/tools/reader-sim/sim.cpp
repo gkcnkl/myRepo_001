@@ -99,9 +99,16 @@ int main(int argc, char** argv) {
   DirCache cache(argv[2]);
   mkdir(argv[3], 0755);
   const bool isText = strstr(argv[1], ".txt") != nullptr;
-  std::vector<uint8_t> b(reader::kBookArena), sc(reader::kScratchArena), gl(reader::kGlyphArena),
-      bo(reader::kBoldGlyphArena), ix(reader::kIndexArena), sh(reader::kSheetArena);
-  const reader::Memory mem{b.data(), sc.data(), gl.data(), bo.data(), ix.data(), sh.data()};
+  std::vector<uint8_t> b(reader::kBookArena), sc(reader::kScratchArena), pa(reader::kParseArena),
+      gl(reader::kGlyphArena), bo(reader::kBoldGlyphArena), ix(reader::kIndexArena), sh(reader::kSheetArena);
+  reader::Memory mem{};
+  mem.book = b.data();
+  mem.scratch = sc.data();
+  mem.parse = pa.data();
+  mem.glyph = gl.data();
+  mem.bold = bo.data();
+  mem.index = ix.data();
+  mem.sheet = sh.data();
   Canvas canvas;
   reader::BookReader r;
   const reader::OpenResult res = r.open(src, cache, isText, mem);
@@ -120,8 +127,9 @@ int main(int argc, char** argv) {
   }
   const reader::Position pos = r.position();
   printf("position: spine %u char %u\n", pos.spine, pos.charOffset);
-  size_t hw[6];
+  size_t hw[7];
   r.memoryReport(hw);
+  printf("parse %zu / %zu\n", hw[6], reader::kParseArena);
   printf("high water: book %zu / %zu, scratch %zu / %zu, glyph %zu / %zu, bold %zu / %zu, index %zu / %zu, css %zu / %zu\n",
          hw[0], reader::kBookArena, hw[1], reader::kScratchArena, hw[2], reader::kGlyphArena, hw[3],
          reader::kBoldGlyphArena, hw[4], reader::kIndexArena, hw[5], reader::kSheetArena);

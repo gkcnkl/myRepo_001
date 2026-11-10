@@ -65,7 +65,7 @@ struct BookReader::Impl {
   CacheStorage* cache = nullptr;
   bool isText = false;
 
-  Arena bookArena, scratch, glyphArena, boldGlyphArena, indexArena, sheetArena;
+  Arena bookArena, scratch, parse, glyphArena, boldGlyphArena, indexArena, sheetArena;
   Book book;
   TtfFont regular, bold;
   FontChain fonts;
@@ -102,6 +102,7 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
 
   m.bookArena.init(mem.book, kBookArena);
   m.scratch.init(mem.scratch, kScratchArena);
+  m.parse.init(mem.parse, kParseArena);
   m.glyphArena.init(mem.glyph, kGlyphArena);
   m.boldGlyphArena.init(mem.bold, kBoldGlyphArena);
   m.indexArena.init(mem.index, kIndexArena);
@@ -110,8 +111,9 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
   const char* lang = "tr";
   if (!isText) {
     trace("katalog", 0);
-    const BookStatus st = m.book.open(source, m.bookArena, m.scratch);
-    m.scratch.reset();
+    // Container parse needs an inflate window too: use the parse arena.
+    const BookStatus st = m.book.open(source, m.bookArena, m.parse);
+    m.parse.reset();
     if (st == BookStatus::Encrypted) return OpenResult::Encrypted;
     if (st == BookStatus::OutOfMemory) return OpenResult::TooBig;
     if (st != BookStatus::Ok) return OpenResult::Broken;
@@ -124,10 +126,10 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
       const ManifestItem* item = m.book.manifestItem(i);
       if (item->mediaType == nullptr || strcmp(item->mediaType, "text/css") != 0) continue;
       const ZipEntry* entry = m.book.zip().find(item->href);
-      if (entry != nullptr) builder.addSheet(source, *entry, m.scratch);
+      if (entry != nullptr) builder.addSheet(source, *entry, m.parse);
+      m.parse.reset();
     }
     m.sheet = builder.finish();
-    m.scratch.reset();
   }
 
   if (!m.regular.init(kLiterataRegular, kLiterataRegular_size, m.glyphArena) ||
@@ -200,6 +202,7 @@ bool BookReader::openChapter(uint16_t spine) {
   m.pagesOpen = false;
   m.indexArena.reset();
   m.scratch.reset();
+  m.parse.reset();
 
   trace("bolum", spine);
   char name[64];
@@ -218,12 +221,13 @@ bool BookReader::openChapter(uint16_t spine) {
       const ZipEntry* entry = item != nullptr ? m.book.zip().find(item->href) : nullptr;
       if (entry == nullptr) return false;
       st = ChapterLayout::layout(*m.source, m.book.zip(), *entry, item->href, m.params, m.scratch, writer,
-                                 nullptr, &totalChars);
+                                 nullptr, &totalChars, &m.parse);
     }
     if (st != BookStatus::Ok || writer.failed()) return false;
     writer.setTotalChars(totalChars);
     if (!writer.finish()) return false;
     m.scratch.reset();
+    m.parse.reset();
     if (m.pages.open(*m.cache, name, m.generation, m.indexArena) != BookStatus::Ok) return false;
   }
   m.pagesOpen = true;
@@ -315,7 +319,7 @@ bool BookReader::render(uint8_t* fb) {
   return st == BookStatus::Ok;
 }
 
-void BookReader::memoryReport(size_t out[6]) const {
+void BookReader::memoryReport(size_t out[7]) const {
   const Impl& m = *impl_;
   out[0] = m.bookArena.highWater();
   out[1] = m.scratch.highWater();
@@ -323,6 +327,7 @@ void BookReader::memoryReport(size_t out[6]) const {
   out[3] = m.boldGlyphArena.highWater();
   out[4] = m.indexArena.highWater();
   out[5] = m.sheetArena.highWater();
+  out[6] = m.parse.highWater();
 }
 
 uint8_t BookReader::percent() const {

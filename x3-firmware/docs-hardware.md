@@ -19,6 +19,9 @@
 
 ## Bellek (PSRAM yok)
 
-Okuyucu açılırken ayrı bloklar halinde ~200 KB ayırır (sayfalama 112 KB,
-katalog 40 KB, fontlar 32 KB, dizin/CSS 16 KB) ve kitap kapanınca bırakır.
-Wi-Fi okuma sırasında kapalıdır. Yetmezse rafa "Bellek yetmedi" yazılır.
+Okuyucu bir kitap açılınca yedi ayrı blok ayırır ve kapanınca bırakır:
+sayfalama 56 KB, ayrıştırma (sıkıştırma + XML) 50 KB, katalog 24 KB, fontlar
+16 + 12 KB, sayfa dizini 12 KB, CSS 4 KB; toplam ~174 KB, en büyük blok 56 KB.
+Ölçülen tepe değerler (Dubliners, 290 sayfa): sayfalama 52 KB, ayrıştırma 46 KB.
+Wi-Fi'dan çıkınca cihaz kendini yeniden başlatır (aynı ekrana döner); böylece
+okuyucu parçalanmamış bir heap bulur. Yetmezse rafta boş ve en büyük blok yazar.

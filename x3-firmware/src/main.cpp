@@ -52,6 +52,16 @@ void setCrumb(const char* fmt, const char* a, int b) {
 }
 void clearCrumb() { crumb.magic = 0; }
 
+// After a Wi-Fi session the device restarts so the reader gets an
+// unfragmented heap; this says which screen to come back to.
+struct Resume {
+  uint32_t magic;
+  uint8_t screen;
+  int16_t libSelected;
+};
+RTC_NOINIT_ATTR Resume resume;
+constexpr uint32_t kResumeMagic = 0x58335253;  // "X3RS"
+
 constexpr int PIN_SCLK = 8;
 constexpr int PIN_MOSI = 10;
 constexpr int PIN_MISO = 7;
@@ -120,6 +130,10 @@ class Canvas : public Adafruit_GFX {
 
 Canvas screen;
 
+// One shared buffer for the briefing file (load, save, web page): static RAM
+// is precious next to the reader's ~170 KB of heap arenas.
+char gTextBuf[8192];
+
 void loadTasks() {
   app.sdAvailable = SdMan.begin();
   if (!app.sdAvailable) {
@@ -135,18 +149,16 @@ void loadTasks() {
     app.tasks.loadSample();
     return;
   }
-  static char buf[8192];
-  const int n = f.read(buf, sizeof buf);
+  const int n = f.read(gTextBuf, sizeof gTextBuf);
   f.close();
-  app.tasks.parse(buf, n > 0 ? static_cast<size_t>(n) : 0);
+  app.tasks.parse(gTextBuf, n > 0 ? static_cast<size_t>(n) : 0);
   Serial.printf("[x3] loaded %d tasks from %s\n", app.tasks.count, tasksPath);
 }
 
 void saveTasks() {
   if (!app.sdAvailable) return;
-  static char buf[8192];
-  app.tasks.serialize(buf, sizeof buf);
-  if (!SdMan.writeFile(tasksPath, String(buf))) Serial.println("[x3] save failed");
+  app.tasks.serialize(gTextBuf, sizeof gTextBuf);
+  if (!SdMan.writeFile(tasksPath, String(gTextBuf))) Serial.println("[x3] save failed");
 }
 
 bool setClock(const LocalTime& t) {
@@ -280,7 +292,7 @@ void scanLibrary() {
 }
 
 void freeReaderMemory() {
-  uint8_t** bufs[] = {&readerMem.book, &readerMem.scratch, &readerMem.glyph,
+  uint8_t** bufs[] = {&readerMem.book, &readerMem.scratch, &readerMem.parse, &readerMem.glyph,
                       &readerMem.bold, &readerMem.index,   &readerMem.sheet};
   for (uint8_t** b : bufs) {
     free(*b);
@@ -288,16 +300,21 @@ void freeReaderMemory() {
   }
 }
 
+char memoryNote[48] = "";  // "boş 143 KB, en büyük 61 KB" when allocation failed
+
 bool allocReaderMemory() {
-  const size_t sizes[] = {reader::kScratchArena, reader::kBookArena, reader::kGlyphArena,
+  const size_t sizes[] = {reader::kScratchArena, reader::kParseArena,      reader::kBookArena, reader::kGlyphArena,
                           reader::kBoldGlyphArena, reader::kIndexArena, reader::kSheetArena};
-  uint8_t** bufs[] = {&readerMem.scratch, &readerMem.book, &readerMem.glyph,
+  uint8_t** bufs[] = {&readerMem.scratch, &readerMem.parse, &readerMem.book, &readerMem.glyph,
                       &readerMem.bold,    &readerMem.index, &readerMem.sheet};
-  for (int i = 0; i < 6; ++i) {  // largest first, while the heap is least fragmented
+  const unsigned freeKb = heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024;
+  const unsigned largestKb = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024;
+  Serial.printf("[x3] reader alloc: heap free %u KB, largest block %u KB\n", freeKb, largestKb);
+  for (int i = 0; i < 7; ++i) {  // largest first, while the heap is least fragmented
     *bufs[i] = static_cast<uint8_t*>(heap_caps_malloc(sizes[i], MALLOC_CAP_8BIT));
     if (*bufs[i] == nullptr) {
-      Serial.printf("[x3] reader: no memory for %u B (largest free %u)\n", sizes[i],
-                    heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+      snprintf(memoryNote, sizeof memoryNote, "boş %u KB, en büyük %u KB", freeKb, largestKb);
+      Serial.printf("[x3] reader: no memory for %u B\n", static_cast<unsigned>(sizes[i]));
       freeReaderMemory();
       return false;
     }
@@ -363,7 +380,7 @@ bool openSelectedBook() {
   bookDir(b, dir, sizeof dir);
   setCrumb("%s açılırken", b.file, 0);
   if (!allocReaderMemory()) {
-    error = "Bellek yetmedi";
+    error = "Bellek yetmedi";  // memoryNote has the numbers
   } else if (!bookSource.open(path)) {
     error = "Dosya açılamadı";
   } else {
@@ -381,7 +398,11 @@ bool openSelectedBook() {
     bookSource.close();
     bookCache.closeAll();
     freeReaderMemory();
-    snprintf(app.libStatus, sizeof app.libStatus, "%s", error);
+    if (strcmp(error, "Bellek yetmedi") == 0) {
+      snprintf(app.libStatus, sizeof app.libStatus, "Bellek yetmedi · %s", memoryNote);
+    } else {
+      snprintf(app.libStatus, sizeof app.libStatus, "%s", error);
+    }
     app.screen = Screen::Library;
     clearCrumb();
     return false;
@@ -444,9 +465,8 @@ void render(bool screenChange, bool deepClean = false) {
 void handlePage() { server.send_P(200, "text/html; charset=utf-8", kTransferPage); }
 
 void handleGetBriefing() {
-  static char buf[8192];
-  app.tasks.serialize(buf, sizeof buf);
-  server.send(200, "text/plain; charset=utf-8", buf);
+  app.tasks.serialize(gTextBuf, sizeof gTextBuf);
+  server.send(200, "text/plain; charset=utf-8", gTextBuf);
 }
 
 void handlePostBriefing() {
@@ -689,11 +709,22 @@ void setup() {
   }
   clearCrumb();
   reader::setTrace(readerTrace);
+  const bool resumed = reason == ESP_RST_SW && resume.magic == kResumeMagic;
+  const Resume resumeState = resume;
+  resume.magic = 0;
 
   rtc.begin();
   loadTasks();
   applySetTimeFile();
   scanLibrary();
+  if (resumed) {
+    const Screen target = static_cast<Screen>(resumeState.screen);
+    if (target == Screen::Library || target == Screen::List) app.screen = target;
+    if (resumeState.libSelected >= 0 && resumeState.libSelected <= app.lib.count) {
+      app.libSelected = resumeState.libSelected;
+    }
+    waitingForRelease = false;  // no wake press to swallow after a restart
+  }
   app.lastInputMs = millis();
   render(true, /*deepClean=*/true);
 }
@@ -711,7 +742,17 @@ void loop() {
       const Effects fx = app.onButton(static_cast<Button>(b), now);
       if (fx.closeBook) closeBook();
       if (fx.sleep) goToSleep();
-      if (fx.stopWifi) stopWifi();
+      if (fx.stopWifi) {
+        stopWifi();
+        // Wi-Fi leaves the heap fragmented and the reader needs large blocks:
+        // restart cleanly and come back to the same screen.
+        resume.magic = kResumeMagic;
+        resume.screen = static_cast<uint8_t>(app.screen);
+        resume.libSelected = static_cast<int16_t>(app.libSelected);
+        Serial.println("[x3] restarting after Wi-Fi");
+        Serial.flush();
+        esp_restart();
+      }
       if (fx.startWifi) startWifi();
       if (fx.save) saveTasks();
       if (libraryDirty && app.screen == Screen::Library) scanLibrary();

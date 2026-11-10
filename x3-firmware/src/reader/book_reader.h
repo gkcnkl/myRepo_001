@@ -21,17 +21,21 @@ constexpr int16_t kFooterH = 40;  // status line drawn by the UI under the text
 
 // Working memory: one buffer per arena, allocated separately by the caller so
 // a fragmented heap still fits them (no PSRAM on the X3).
-constexpr size_t kBookArena = 40 * 1024;       // ZIP catalog, OPF, spine, TOC (5-40 KB on real books)
-constexpr size_t kScratchArena = 112 * 1024;   // layout (Small profile ~106 KB peak), render
-constexpr size_t kGlyphArena = 20 * 1024;      // rasterized glyph cache, regular face
+constexpr size_t kBookArena = 24 * 1024;       // ZIP catalog, OPF, spine, TOC (Dubliners: 7.5 KB)
+// Layout working set split in two so no single block is ~110 KB (the heap
+// is fragmented once Wi-Fi, the display and the SD card are up).
+constexpr size_t kScratchArena = 56 * 1024;    // layout + page render (measured peak ~52 KB)
+constexpr size_t kParseArena = 50 * 1024;      // inflate window + XML parse (measured peak ~46 KB)
+constexpr size_t kGlyphArena = 16 * 1024;      // rasterized glyph cache, regular face (flushes when full)
 constexpr size_t kBoldGlyphArena = 12 * 1024;  // bold face (headings); each face flushes its own arena
 // Each face also reserves ~7 KB of fixed tables (FREEINK_FONT_ADVANCE_SLOTS=256 in the build).
-constexpr size_t kIndexArena = 8 * 1024;       // open chapter's page index (~8 B/page)
-constexpr size_t kSheetArena = 8 * 1024;       // book CSS
+constexpr size_t kIndexArena = 12 * 1024;      // open chapter's page index (~8 B/page: ~1500 pages)
+constexpr size_t kSheetArena = 4 * 1024;       // book CSS (oversized sheets are skipped)
 
 struct Memory {
   uint8_t* book;     // kBookArena bytes
   uint8_t* scratch;  // kScratchArena
+  uint8_t* parse;    // kParseArena
   uint8_t* glyph;    // kGlyphArena
   uint8_t* bold;     // kBoldGlyphArena
   uint8_t* index;    // kIndexArena
@@ -93,8 +97,8 @@ class BookReader {
   // Language of the current chapter's text (xml:lang of the book or "tr").
   bool isTurkish() const;
 
-  // Arena high-water marks in bytes: book, scratch, glyph, bold glyph, index, sheet.
-  void memoryReport(size_t out[6]) const;
+  // Arena high-water marks in bytes: book, scratch, glyph, bold glyph, index, sheet, parse.
+  void memoryReport(size_t out[7]) const;
 
   struct Impl;  // engine state, defined in book_reader.cpp
 
