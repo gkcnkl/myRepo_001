@@ -1,0 +1,46 @@
+#pragma once
+#include <stdint.h>
+
+#include "tasks.h"
+
+// Hardware-independent app state machine. main.cpp feeds it button presses
+// and time; it says what to redraw, save or do next.
+enum class Button : uint8_t { Back, Confirm, Left, Right, Up, Down, Power };
+enum class Screen : uint8_t { List, Focus, FocusDone };
+
+struct Effects {
+  bool redraw = false;
+  bool fullRefresh = false;  // screen change: clear ghosting
+  bool save = false;         // task list changed, write the SD file
+  bool sleep = false;        // enter deep sleep
+};
+
+struct App {
+  static constexpr uint32_t kFocusMs = 25UL * 60UL * 1000UL;
+  static constexpr uint32_t kIdleSleepMs = 3UL * 60UL * 1000UL;
+  static constexpr int kVisibleRows = 8;
+
+  TaskList tasks;
+  Screen screen = Screen::List;
+  int selected = 0;
+  int scroll = 0;  // first visible row on the list
+
+  int focusTask = -1;
+  uint32_t focusStartMs = 0;
+  uint32_t focusElapsedBeforePause = 0;
+  bool focusPaused = false;
+  int shownMinutes = -1;  // minutes value currently on the screen
+
+  uint32_t lastInputMs = 0;
+  bool sdAvailable = true;
+
+  Effects onButton(Button b, uint32_t nowMs);
+  Effects onTick(uint32_t nowMs);
+
+  uint32_t focusElapsed(uint32_t nowMs) const;
+  // Whole minutes left, rounded up (25 ... 1, 0 when finished).
+  int focusMinutesLeft(uint32_t nowMs) const;
+
+ private:
+  void keepSelectionVisible();
+};

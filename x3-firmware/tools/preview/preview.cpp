@@ -2,8 +2,10 @@
 // same ui.cpp drawing code as the firmware (portrait 528x792).
 #include <Adafruit_GFX.h>
 #include <stdio.h>
+#include <string.h>
 #include <vector>
 
+#include "../../src/app.h"
 #include "../../src/ui.h"
 
 class Canvas : public Adafruit_GFX {
@@ -13,7 +15,9 @@ class Canvas : public Adafruit_GFX {
     if (x < 0 || y < 0 || x >= width() || y >= height()) return;
     px[y * width() + x] = c ? 0 : 255;
   }
-  void save(const char* path) {
+  void save(const char* dir, const char* name) {
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s.pgm", dir, name);
     FILE* f = fopen(path, "wb");
     fprintf(f, "P5\n%d %d\n255\n", width(), height());
     fwrite(px.data(), 1, px.size(), f);
@@ -24,14 +28,24 @@ class Canvas : public Adafruit_GFX {
 
 int main(int argc, char** argv) {
   const char* out = argc > 1 ? argv[1] : ".";
-  char path[512];
-  Canvas a;
-  ui::drawHello(a, "-", 0, "Ekran: UC8253");
-  snprintf(path, sizeof path, "%s/hello-boot.pgm", out);
-  a.save(path);
-  Canvas b;
-  ui::drawHello(b, "TAMAM (CONFIRM)", 3, "Ekran: UC8253");
-  snprintf(path, sizeof path, "%s/hello-button.pgm", out);
-  b.save(path);
+  App app;
+  app.tasks.loadSample();
+  app.tasks.items[0].done = true;
+  app.tasks.items[2].done = true;
+  app.selected = 1;
+
+  { Canvas c; ui::drawList(c, app, false); c.save(out, "1-list"); }
+
+  app.onButton(Button::Right, 0);  // focus on task 1
+  { Canvas c; ui::drawFocus(c, app, 7 * 60 * 1000); c.save(out, "2-focus"); }
+  app.onButton(Button::Confirm, 7 * 60 * 1000);  // pause
+  { Canvas c; ui::drawFocus(c, app, 9 * 60 * 1000); c.save(out, "3-focus-paused"); }
+  app.screen = Screen::FocusDone;
+  { Canvas c; ui::drawFocusDone(c, app); c.save(out, "4-focus-done"); }
+  app.screen = Screen::List;
+  { Canvas c; ui::drawList(c, app, true); c.save(out, "5-sleep"); }
+
+  App empty;
+  { Canvas c; ui::drawList(c, empty, false); c.save(out, "6-empty"); }
   return 0;
 }
