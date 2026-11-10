@@ -94,17 +94,24 @@ void saveTasks() {
   if (!SdMan.writeFile(kTasksPath, String(buf))) Serial.println("[x3] save failed");
 }
 
-// screenChange -> HALF refresh; firstFrame -> FULL refresh (clears all ghosting).
-void render(bool screenChange, bool firstFrame = false) {
+// Drives every pixel to white, then the next frame paints on a clean panel.
+// The X3 driver's FULL mode assumes a white previous frame, so it can leave
+// ghosts; HALF drives each pixel to its target regardless of the old image.
+void cleanPanel() {
+  epd.clearScreen(0xFF);
+  epd.displayBuffer(EInkDisplay::HALF_REFRESH);
+  fastRefreshes = 0;
+}
+
+// screenChange -> HALF refresh; deepClean -> white pass first (no ghosts).
+void render(bool screenChange, bool deepClean = false) {
+  if (deepClean) cleanPanel();
   switch (app.screen) {
     case Screen::List: ui::drawList(screen, app, false); break;
     case Screen::Focus: ui::drawFocus(screen, app, millis()); break;
     case Screen::FocusDone: ui::drawFocusDone(screen, app); break;
   }
-  if (firstFrame) {
-    fastRefreshes = 0;
-    epd.displayBuffer(EInkDisplay::FULL_REFRESH);
-  } else if (screenChange || ++fastRefreshes >= kFastRefreshesBeforeFull) {
+  if (screenChange || ++fastRefreshes >= kFastRefreshesBeforeFull) {
     fastRefreshes = 0;
     epd.displayBuffer(EInkDisplay::HALF_REFRESH);
   } else {
@@ -114,9 +121,10 @@ void render(bool screenChange, bool firstFrame = false) {
 
 [[noreturn]] void goToSleep() {
   Serial.println("[x3] sleep");
+  // This image stays on the panel while off, so clean first: no ghosts.
+  cleanPanel();
   ui::drawList(screen, app, true);
-  // FULL refresh: this image stays on the panel while off, so leave no ghosts.
-  epd.displayBuffer(EInkDisplay::FULL_REFRESH);
+  epd.displayBuffer(EInkDisplay::HALF_REFRESH);
   epd.deepSleep();
   SdMan.shutdown();
   // Same order as CrossPoint: cut the battery path (no-op on USB power), then
@@ -164,7 +172,7 @@ void setup() {
 
   loadTasks();
   app.lastInputMs = millis();
-  render(true, /*firstFrame=*/true);
+  render(true, /*deepClean=*/true);
 }
 
 void loop() {
@@ -180,7 +188,7 @@ void loop() {
       const Effects fx = app.onButton(static_cast<Button>(b), now);
       if (fx.sleep) goToSleep();
       if (fx.save) saveTasks();
-      if (fx.redraw) render(fx.fullRefresh || app.screen != before);
+      if (fx.redraw) render(fx.fullRefresh || app.screen != before, fx.deepClean);
       break;
     }
   }

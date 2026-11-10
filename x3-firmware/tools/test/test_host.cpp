@@ -80,6 +80,9 @@ static void testListNavigation() {
   CHECK(fx.save && fx.redraw && a.tasks.items[0].done);
   fx = a.onButton(Button::Confirm, 0);
   CHECK(!a.tasks.items[0].done);
+  fx = a.onButton(Button::Back, 0);
+  CHECK(fx.redraw && fx.deepClean);
+  CHECK(!a.onButton(Button::Down, 0).deepClean);
   CHECK(a.onButton(Button::Power, 0).sleep);
 }
 

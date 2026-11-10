@@ -11,6 +11,7 @@ enum class Screen : uint8_t { List, Focus, FocusDone };
 struct Effects {
   bool redraw = false;
   bool fullRefresh = false;  // screen change: clear ghosting
+  bool deepClean = false;    // white pass first: removes all ghosting
   bool save = false;         // task list changed, write the SD file
   bool sleep = false;        // enter deep sleep
 };

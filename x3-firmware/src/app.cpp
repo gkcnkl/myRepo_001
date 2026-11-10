@@ -30,7 +30,7 @@ Effects App::onButton(Button b, uint32_t nowMs) {
   switch (screen) {
     case Screen::List:
       if (tasks.count == 0) {
-        if (b == Button::Back) { fx.redraw = fx.fullRefresh = true; }
+        if (b == Button::Back) { fx.redraw = fx.fullRefresh = fx.deepClean = true; }
         break;
       }
       if (b == Button::Up) {
@@ -53,7 +53,7 @@ Effects App::onButton(Button b, uint32_t nowMs) {
         shownMinutes = focusMinutesLeft(nowMs);
         fx.redraw = fx.fullRefresh = true;
       } else if (b == Button::Back) {
-        fx.redraw = fx.fullRefresh = true;  // manual ghosting cleanup
+        fx.redraw = fx.fullRefresh = fx.deepClean = true;  // manual ghosting cleanup
       }
       break;
 
