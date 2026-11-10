@@ -1,5 +1,7 @@
 #include "app.h"
 
+#include <stdlib.h>
+
 uint32_t App::focusElapsed(uint32_t nowMs) const {
   if (focusPaused) return focusElapsedBeforePause;
   return focusElapsedBeforePause + (nowMs - focusStartMs);
@@ -32,6 +34,66 @@ int App::rowsFrom(int first) const {
   return n > 0 ? n : 1;
 }
 
+void App::keepShelfVisible() {
+  SpineBox boxes[Library::kMax + 1];
+  ShelfLayout::place(lib, boxes, Library::kMax + 1);
+  const int shelf = boxes[libSelected].shelf;
+  if (shelf < shelfScroll) shelfScroll = shelf;
+  if (shelf >= shelfScroll + ShelfLayout::kShelves) shelfScroll = shelf - ShelfLayout::kShelves + 1;
+}
+
+Effects App::onLibraryButton(Button b) {
+  Effects fx;
+  const int items = lib.count + 1;  // + the "Ekle" spine
+  if (libSelected >= items) libSelected = items - 1;
+  SpineBox boxes[Library::kMax + 1];
+  ShelfLayout::place(lib, boxes, Library::kMax + 1);
+  switch (b) {
+    case Button::Left:
+      libSelected = (libSelected + items - 1) % items;
+      break;
+    case Button::Right:
+      libSelected = (libSelected + 1) % items;
+      break;
+    case Button::Up:
+    case Button::Down: {
+      // Nearest spine (by centre) on the shelf above / below.
+      const int target = boxes[libSelected].shelf + (b == Button::Up ? -1 : 1);
+      const int cx = boxes[libSelected].x + boxes[libSelected].w / 2;
+      int best = -1, bestDist = 1 << 30;
+      for (int i = 0; i < items; ++i) {
+        if (boxes[i].shelf != target) continue;
+        const int d = abs(boxes[i].x + boxes[i].w / 2 - cx);
+        if (d < bestDist) bestDist = d, best = i;
+      }
+      if (best < 0) return fx;
+      libSelected = best;
+      break;
+    }
+    case Button::Confirm:
+      libStatus[0] = '\0';
+      if (libSelected == lib.count) {
+        wifiReturn = Screen::Library;
+        screen = Screen::Wifi;
+        wifiStatus[0] = '\0';
+        fx.startWifi = fx.redraw = fx.fullRefresh = true;
+      } else {
+        screen = Screen::Reader;
+        fx.openBook = fx.redraw = fx.fullRefresh = true;
+      }
+      return fx;
+    case Button::Back:
+      screen = Screen::List;
+      fx.redraw = fx.fullRefresh = true;
+      return fx;
+    default:
+      return fx;
+  }
+  keepShelfVisible();
+  fx.redraw = true;
+  return fx;
+}
+
 void App::keepSelectionVisible() {
   if (selected < scroll) scroll = selected;
   while (scroll < selected && selected >= scroll + rowsFrom(scroll)) ++scroll;
@@ -45,21 +107,26 @@ Effects App::onButton(Button b, uint32_t nowMs) {
   if (b == Button::Power && screen != Screen::Focus) {
     fx.sleep = true;
     fx.stopWifi = screen == Screen::Wifi;
+    fx.closeBook = screen == Screen::Reader;
     return fx;
   }
 
   switch (screen) {
     case Screen::List:
+      if (b == Button::Back) {
+        screen = Screen::Library;
+        keepShelfVisible();
+        fx.redraw = fx.fullRefresh = fx.deepClean = true;
+        break;
+      }
       if (b == Button::Left) {
+        wifiReturn = Screen::List;
         screen = Screen::Wifi;
         wifiStatus[0] = '\0';
         fx.startWifi = fx.redraw = fx.fullRefresh = true;
         break;
       }
-      if (tasks.count == 0) {
-        if (b == Button::Back) { fx.redraw = fx.fullRefresh = fx.deepClean = true; }
-        break;
-      }
+      if (tasks.count == 0) break;
       if (b == Button::Up) {
         selected = (selected + tasks.count - 1) % tasks.count;
         keepSelectionVisible();
@@ -79,8 +146,6 @@ Effects App::onButton(Button b, uint32_t nowMs) {
         focusPaused = false;
         shownMinutes = focusMinutesLeft(nowMs);
         fx.redraw = fx.fullRefresh = true;
-      } else if (b == Button::Back) {
-        fx.redraw = fx.fullRefresh = fx.deepClean = true;  // manual ghosting cleanup
       }
       break;
 
@@ -100,9 +165,25 @@ Effects App::onButton(Button b, uint32_t nowMs) {
       }
       break;
 
+    case Screen::Library:
+      return onLibraryButton(b);
+
+    case Screen::Reader:
+      if (b == Button::Right || b == Button::Down) {
+        fx.pageDelta = 1;
+        fx.redraw = true;
+      } else if (b == Button::Left || b == Button::Up) {
+        fx.pageDelta = -1;
+        fx.redraw = true;
+      } else if (b == Button::Back) {
+        screen = Screen::Library;
+        fx.closeBook = fx.redraw = fx.fullRefresh = true;
+      }
+      break;
+
     case Screen::Wifi:
       if (b == Button::Back) {
-        screen = Screen::List;
+        screen = wifiReturn;
         if (selected >= tasks.count) selected = tasks.count > 0 ? tasks.count - 1 : 0;
         keepSelectionVisible();
         fx.stopWifi = fx.redraw = fx.fullRefresh = true;
@@ -140,10 +221,12 @@ Effects App::onTick(uint32_t nowMs) {
     }
     return fx;
   }
-  const uint32_t idle = screen == Screen::Wifi ? kWifiIdleMs : kIdleSleepMs;
+  const uint32_t idle =
+      screen == Screen::Wifi ? kWifiIdleMs : screen == Screen::Reader ? kReaderIdleMs : kIdleSleepMs;
   if (nowMs - lastInputMs >= idle) {
     fx.sleep = true;
     fx.stopWifi = screen == Screen::Wifi;
+    fx.closeBook = screen == Screen::Reader;
   }
   return fx;
 }

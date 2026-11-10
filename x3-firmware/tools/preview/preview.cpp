@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../../src/app.h"
+#include "../../src/library.h"
 #include "../../src/ui.h"
 
 class Canvas : public Adafruit_GFX {
@@ -61,6 +62,44 @@ int main(int argc, char** argv) {
   strcpy(app.wifiUrl, "http://192.168.4.1");
   strcpy(app.wifiStatus, "Brifing alındı · 12 görev");
   { Canvas c; ui::drawWifi(c, app); c.save(out, "7-wifi"); }
+
+  // Bookshelf + lending card with a sample library.
+  {
+    const struct { const char* file; const char* title; const char* author; uint32_t kb; int pct; int day; } books[] = {
+        {"a.epub", "Kürk Mantolu Madonna", "Sabahattin Ali", 300, 37, 2},
+        {"b.epub", "Tutunamayanlar", "Oğuz Atay", 1900, 12, 28},
+        {"c.epub", "Saatleri Ayarlama Enstitüsü", "Ahmet Hamdi Tanpınar", 900, 0, 0},
+        {"d.epub", "Kaşağı ve Alice", "Ömer Seyfettin", 10, 64, 10},
+        {"e.epub", "İnce Memed", "Yaşar Kemal", 1500, 0, 0},
+        {"f.epub", "Aylak Adam", "Yusuf Atılgan", 250, 0, 0},
+        {"g.epub", "Çalıkuşu", "Reşat Nuri Güntekin", 700, 0, 0},
+        {"h.epub", "Martin Eden", "Jack London", 800, 0, 0},
+        {"i.epub", "Dune", "Frank Herbert", 2400, 81, 15},
+        {"j.epub", "Suç ve Ceza", "Dostoyevski", 2000, 0, 0},
+        {"k.epub", "Beyaz Diş", "Jack London", 400, 0, 0},
+        {"l.epub", "Simyacı", "Paulo Coelho", 200, 0, 0},
+    };
+    int n = 0;
+    for (const auto& bk : books) {
+      BookInfo& b = app.lib.books[n++];
+      bookFromFileName(bk.file, bk.kb * 1024, b);
+      strcpy(b.title, bk.title);
+      strcpy(b.author, bk.author);
+      if (bk.pct) {
+        b.percent = bk.pct;
+        b.lastRead = 202611100000ull + bk.pct;
+        b.started = DateStamp{2026, static_cast<uint8_t>(bk.day > 20 ? 10 : 11), static_cast<uint8_t>(bk.day)};
+      }
+    }
+    app.lib.count = n;
+    app.lib.sortByTitle();
+    app.libSelected = 6;
+    { Canvas c; ui::drawLibrary(c, app); c.save(out, "8-library"); }
+    { Canvas c; ui::drawLendingCard(c, app); c.save(out, "9-lending-card"); }
+    App none;
+    strcpy(none.dateText, app.dateText);
+    { Canvas c; ui::drawLibrary(c, none); c.save(out, "10-library-empty"); }
+  }
 
   App empty;  // clock not set, battery charging
   empty.batteryPercent = 37;

@@ -1,8 +1,9 @@
-// Xteink X3 — daily briefing + 25-minute focus timer.
+// Xteink X3 — daily briefing, focus timer, bookshelf and e-book reader.
 //
 // The briefing comes from /brifing.txt on the SD card (created with a sample
-// if missing) or from the Wi-Fi transfer page. Hardware glue only: the app
-// logic lives in app.cpp, drawing in ui.cpp. Button layout: docs-hardware.md.
+// if missing) or from the Wi-Fi transfer page; books live in /kitaplar.
+// Hardware glue only: app logic in app.cpp, drawing in ui.cpp, the reading
+// engine in reader/. Button layout: docs-hardware.md.
 
 #include <Adafruit_GFX.h>
 #include <Arduino.h>
@@ -18,10 +19,14 @@
 #include <WiFi.h>
 #include <XteinkDetect.h>
 #include <driver/gpio.h>
+#include <esp_heap_caps.h>
 #include <esp_random.h>
 
 #include "app.h"
 #include "clock.h"
+#include "library.h"
+#include "reader/book_reader.h"
+#include "sd_storage.h"
 #include "ui.h"
 #include "webpage.h"
 
@@ -47,6 +52,9 @@ constexpr uint32_t kBatteryPollMs = 30000;
 constexpr int kFastRefreshesBeforeFull = 20;
 constexpr const char* kHotspotName = "GK's Xteink X3";
 constexpr size_t kMaxUpload = 8000;
+constexpr const char* kBooksDir = "/kitaplar";
+constexpr const char* kBookStateDir = "/kitaplar/.x3";  // per-book state + page cache
+constexpr int kReaderPagesBeforeClean = 12;  // e-ink ghosting cleanup while reading
 
 EInkDisplay epd(PIN_SCLK, PIN_MOSI, PIN_CS, PIN_DC, PIN_RST, PIN_BUSY);
 InputManager input;
@@ -57,6 +65,14 @@ bool waitingForRelease = true;  // ignore the press that woke the device
 WebServer server(80);
 bool wifiOn = false;
 bool webRedraw = false;  // the web page changed something on screen
+
+reader::BookReader bookReader;
+SdBookSource bookSource;
+SdCacheStorage bookCache;
+reader::Memory readerMem{};
+int openBookIndex = -1;
+int readerPageTurns = 0;
+bool libraryDirty = false;  // books were added/removed over Wi-Fi
 
 // Adafruit_GFX canvas that draws straight into the SDK framebuffer
 // (792x528 native, row-major, MSB-first, 1 = white).
@@ -181,6 +197,186 @@ void cleanPanel() {
   fastRefreshes = 0;
 }
 
+// --- Bookshelf and reader ------------------------------------------------------
+
+bool currentTime(LocalTime& t) {
+  freeink::Rtc::DateTime dt;
+  if (!rtc.present() || !rtc.now(dt)) return false;
+  t.year = dt.year;
+  t.month = dt.month;
+  t.day = dt.day;
+  t.hour = dt.hour;
+  t.minute = dt.minute;
+  t.second = dt.second;
+  return isPlausible(t);
+}
+
+void bookDir(const BookInfo& b, char* out, size_t n) { snprintf(out, n, "%s/%s", kBookStateDir, b.id); }
+
+void saveBookState(const BookInfo& b) {
+  if (!app.sdAvailable) return;
+  char dir[64], path[96], buf[512];
+  bookDir(b, dir, sizeof dir);
+  SdMan.ensureDirectoryExists(dir);
+  snprintf(path, sizeof path, "%s/durum.txt", dir);
+  serializeBookState(b, buf, sizeof buf);
+  SdMan.writeFile(path, String(buf));
+}
+
+// Lists /kitaplar (EPUB and TXT) with each book's saved reading state.
+void scanLibrary() {
+  Library& lib = app.lib;
+  lib.count = 0;
+  libraryDirty = false;
+  if (!app.sdAvailable) return;
+  SdMan.ensureDirectoryExists(kBooksDir);
+  FsFile dir = SdMan.open(kBooksDir, O_RDONLY);
+  if (!dir) return;
+  FsFile f;
+  char name[96];
+  while (lib.count < Library::kMax && f.openNext(&dir, O_RDONLY)) {
+    const bool isDir = f.isDir();
+    f.getName(name, sizeof name);
+    const uint32_t size = static_cast<uint32_t>(f.fileSize());
+    f.close();
+    if (isDir) continue;
+    BookInfo& b = lib.books[lib.count];
+    if (!bookFromFileName(name, size, b)) continue;
+    char path[96];
+    snprintf(path, sizeof path, "%s/%s/durum.txt", kBookStateDir, b.id);
+    FsFile st = SdMan.open(path, O_RDONLY);
+    if (st) {
+      char buf[512];
+      const int n = st.read(buf, sizeof buf);
+      st.close();
+      if (n > 0) parseBookState(buf, static_cast<size_t>(n), b);
+    }
+    ++lib.count;
+  }
+  dir.close();
+  lib.sortByTitle();
+  if (app.libSelected > lib.count) app.libSelected = lib.count;
+  Serial.printf("[x3] library: %d books\n", lib.count);
+}
+
+void freeReaderMemory() {
+  uint8_t** bufs[] = {&readerMem.book, &readerMem.scratch, &readerMem.glyph,
+                      &readerMem.bold, &readerMem.index,   &readerMem.sheet};
+  for (uint8_t** b : bufs) {
+    free(*b);
+    *b = nullptr;
+  }
+}
+
+bool allocReaderMemory() {
+  const size_t sizes[] = {reader::kScratchArena, reader::kBookArena, reader::kGlyphArena,
+                          reader::kBoldGlyphArena, reader::kIndexArena, reader::kSheetArena};
+  uint8_t** bufs[] = {&readerMem.scratch, &readerMem.book, &readerMem.glyph,
+                      &readerMem.bold,    &readerMem.index, &readerMem.sheet};
+  for (int i = 0; i < 6; ++i) {  // largest first, while the heap is least fragmented
+    *bufs[i] = static_cast<uint8_t*>(heap_caps_malloc(sizes[i], MALLOC_CAP_8BIT));
+    if (*bufs[i] == nullptr) {
+      Serial.printf("[x3] reader: no memory for %u B (largest free %u)\n", sizes[i],
+                    heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+      freeReaderMemory();
+      return false;
+    }
+  }
+  return true;
+}
+
+void showReaderMessage(const char* title, const char* message) {
+  updateStatus();
+  ui::drawReaderMessage(screen, app, title, message);
+  epd.displayBuffer(EInkDisplay::FAST_REFRESH);
+}
+
+// Saves the reading position into the book's state (and its file).
+void recordProgress() {
+  if (openBookIndex < 0 || !bookReader.isOpen()) return;
+  BookInfo& b = app.lib.books[openBookIndex];
+  const reader::Position pos = bookReader.position();
+  b.spine = pos.spine;
+  b.charOffset = pos.charOffset;
+  b.percent = bookReader.percent();
+  LocalTime t;
+  if (currentTime(t)) {
+    b.lastRead = static_cast<uint64_t>(t.year) * 100000000ull + t.month * 1000000ull + t.day * 10000ull +
+                 t.hour * 100ull + t.minute;
+  } else {
+    uint64_t newest = 0;  // no clock: keep the order of reading anyway
+    for (int i = 0; i < app.lib.count; ++i) newest = app.lib.books[i].lastRead > newest ? app.lib.books[i].lastRead : newest;
+    if (b.lastRead != newest || b.lastRead == 0) b.lastRead = newest + 1;
+  }
+  saveBookState(b);
+}
+
+void closeBook() {
+  if (openBookIndex >= 0) recordProgress();
+  bookReader.close();
+  bookSource.close();
+  bookCache.closeAll();
+  freeReaderMemory();
+  openBookIndex = -1;
+}
+
+// Opens app.lib.books[app.libSelected]; on failure returns to the shelf.
+bool openSelectedBook() {
+  const int index = app.libSelected;
+  if (index < 0 || index >= app.lib.count) return false;
+  BookInfo& b = app.lib.books[index];
+  showReaderMessage(b.title, "Açılıyor...");
+  const char* error = nullptr;
+  char path[128];
+  snprintf(path, sizeof path, "%s/%s", kBooksDir, b.file);
+  char dir[64];
+  bookDir(b, dir, sizeof dir);
+  if (!allocReaderMemory()) {
+    error = "Bellek yetmedi";
+  } else if (!bookSource.open(path)) {
+    error = "Dosya açılamadı";
+  } else {
+    bookCache.setDir(dir);
+    switch (bookReader.open(bookSource, bookCache, b.isText, readerMem)) {
+      case reader::OpenResult::Ok: break;
+      case reader::OpenResult::Encrypted: error = "DRM korumalı kitap açılamaz"; break;
+      case reader::OpenResult::TooBig: error = "Kitap bu cihaz için çok büyük"; break;
+      default: error = "Kitap okunamadı"; break;
+    }
+  }
+  if (error != nullptr) {
+    Serial.printf("[x3] open %s failed: %s\n", b.file, error);
+    bookReader.close();
+    bookSource.close();
+    bookCache.closeAll();
+    freeReaderMemory();
+    snprintf(app.libStatus, sizeof app.libStatus, "%s", error);
+    app.screen = Screen::Library;
+    return false;
+  }
+  openBookIndex = index;
+  readerPageTurns = 0;
+  // First open: take the title/author from the book and stamp the start date.
+  if (bookReader.title()[0]) snprintf(b.title, sizeof b.title, "%s", bookReader.title());
+  if (bookReader.author()[0]) snprintf(b.author, sizeof b.author, "%s", bookReader.author());
+  LocalTime t;
+  if (!b.started.known() && currentTime(t)) b.started = DateStamp{t.year, t.month, t.day};
+  if (b.lastRead != 0) {
+    reader::Position pos;
+    pos.spine = b.spine;
+    pos.charOffset = b.charOffset;
+    bookReader.seek(pos);
+  }
+  recordProgress();
+  return true;
+}
+
+void renderReaderPage() {
+  bookReader.render(epd.getFrameBuffer());
+  ui::drawReaderFooter(screen, bookReader.chapterTitle(), bookReader.percent(), bookReader.page() + 1,
+                       bookReader.chapterPages(), bookReader.isTurkish());
+}
+
 // screenChange -> HALF refresh; deepClean -> white pass first (no ghosts).
 void render(bool screenChange, bool deepClean = false) {
   if (deepClean) cleanPanel();
@@ -190,6 +386,17 @@ void render(bool screenChange, bool deepClean = false) {
     case Screen::Focus: ui::drawFocus(screen, app, millis()); break;
     case Screen::FocusDone: ui::drawFocusDone(screen, app); break;
     case Screen::Wifi: ui::drawWifi(screen, app); break;
+    case Screen::Library: ui::drawLibrary(screen, app); break;
+    case Screen::Reader:
+      renderReaderPage();
+      // Page turns use FAST refresh; a clean HALF every few pages keeps text crisp.
+      if (!screenChange && ++readerPageTurns < kReaderPagesBeforeClean) {
+        epd.displayBuffer(EInkDisplay::FAST_REFRESH);
+      } else {
+        readerPageTurns = 0;
+        epd.displayBuffer(EInkDisplay::HALF_REFRESH);
+      }
+      return;
   }
   if (screenChange || ++fastRefreshes >= kFastRefreshesBeforeFull) {
     fastRefreshes = 0;
@@ -252,6 +459,101 @@ void handlePostTime() {
   server.send(200, "text/plain; charset=utf-8", msg);
 }
 
+// Books over Wi-Fi: list, upload (multipart, streamed to the card), delete.
+void handleListBooks() {
+  if (libraryDirty) scanLibrary();
+  String out;
+  for (int i = 0; i < app.lib.count; ++i) {
+    const BookInfo& b = app.lib.books[i];
+    char line[256];
+    char meta[48];
+    if (b.lastRead && !b.finished) snprintf(meta, sizeof meta, "%lu KB · %%%u", static_cast<unsigned long>(b.size / 1024), b.percent);
+    else snprintf(meta, sizeof meta, "%lu KB", static_cast<unsigned long>(b.size / 1024));
+    snprintf(line, sizeof line, "%s\t%s\t%s\n", b.file, b.title, meta);
+    out += line;
+  }
+  server.send(200, "text/plain; charset=utf-8", out);
+}
+
+// Keeps the base name and replaces characters FAT does not allow.
+void safeBookName(const String& in, char* out, size_t n) {
+  const int slash = max(in.lastIndexOf('/'), in.lastIndexOf('\\'));
+  String name = in.substring(slash + 1);
+  size_t o = 0;
+  for (size_t i = 0; i < name.length() && o + 1 < n; ++i) {
+    const char c = name[i];
+    out[o++] = (strchr("\\/:*?\"<>|", c) != nullptr || static_cast<unsigned char>(c) < 0x20) ? '_' : c;
+  }
+  out[o] = '\0';
+}
+
+FsFile uploadFile;
+char uploadName[96];
+bool uploadOk = false;
+
+void handleUploadData() {
+  HTTPUpload& up = server.upload();
+  if (up.status == UPLOAD_FILE_START) {
+    uploadOk = false;
+    safeBookName(up.filename, uploadName, sizeof uploadName);
+    BookInfo probe;
+    if (!app.sdAvailable || !bookFromFileName(uploadName, 0, probe)) return;  // not .epub/.txt
+    SdMan.ensureDirectoryExists(kBooksDir);
+    char path[128];
+    snprintf(path, sizeof path, "%s/%s", kBooksDir, uploadName);
+    uploadFile = SdMan.open(path, O_WRONLY | O_CREAT | O_TRUNC);
+    uploadOk = static_cast<bool>(uploadFile);
+  } else if (up.status == UPLOAD_FILE_WRITE) {
+    if (uploadOk && uploadFile.write(up.buf, up.currentSize) != up.currentSize) uploadOk = false;
+  } else if (up.status == UPLOAD_FILE_END || up.status == UPLOAD_FILE_ABORTED) {
+    if (uploadFile) uploadFile.close();
+    if (up.status == UPLOAD_FILE_ABORTED || !uploadOk) {
+      char path[128];
+      snprintf(path, sizeof path, "%s/%s", kBooksDir, uploadName);
+      if (uploadName[0]) SdMan.remove(path);
+      uploadOk = false;
+    }
+  }
+  app.touch(millis());
+}
+
+void handleUploadDone() {
+  char msg[160];
+  if (!app.sdAvailable) {
+    snprintf(msg, sizeof msg, "SD kart yok: kitap kaydedilemedi.");
+  } else if (!uploadOk) {
+    snprintf(msg, sizeof msg, "%s eklenemedi (yalnız .epub ve .txt).", uploadName);
+  } else {
+    snprintf(msg, sizeof msg, "Rafa eklendi: %s", uploadName);
+    snprintf(app.wifiStatus, sizeof app.wifiStatus, "Kitap eklendi");
+    libraryDirty = true;
+    webRedraw = true;
+  }
+  server.send(uploadOk ? 200 : 400, "text/plain; charset=utf-8", msg);
+}
+
+void handleDeleteBook() {
+  char name[96];
+  safeBookName(server.arg("plain"), name, sizeof name);
+  BookInfo b;
+  if (!bookFromFileName(name, 0, b)) {
+    server.send(400, "text/plain; charset=utf-8", "Geçersiz ad.");
+    return;
+  }
+  char path[128], dir[64];
+  snprintf(path, sizeof path, "%s/%s", kBooksDir, name);
+  bookDir(b, dir, sizeof dir);
+  const bool ok = SdMan.remove(path);
+  SdMan.removeDir(dir);  // reading state + page cache
+  libraryDirty = true;
+  app.touch(millis());
+  if (ok) {
+    snprintf(app.wifiStatus, sizeof app.wifiStatus, "Kitap silindi");
+    webRedraw = true;
+  }
+  server.send(ok ? 200 : 404, "text/plain; charset=utf-8", ok ? "Silindi." : "Bulunamadı.");
+}
+
 void startWifi() {
   if (wifiOn) return;
   // A fresh 8-digit password each time the hotspot opens.
@@ -267,6 +569,9 @@ void startWifi() {
   server.on("/brifing.txt", HTTP_GET, handleGetBriefing);
   server.on("/brifing", HTTP_POST, handlePostBriefing);
   server.on("/saat", HTTP_POST, handlePostTime);
+  server.on("/kitaplar", HTTP_GET, handleListBooks);
+  server.on("/kitap", HTTP_POST, handleUploadDone, handleUploadData);
+  server.on("/kitap-sil", HTTP_POST, handleDeleteBook);
   server.onNotFound([] { server.send(404, "text/plain; charset=utf-8", "Yok"); });
   server.begin();
   wifiOn = true;
@@ -279,17 +584,19 @@ void stopWifi() {
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_OFF);
   wifiOn = false;
+  if (libraryDirty) scanLibrary();
   Serial.println("[x3] hotspot off");
 }
 
 [[noreturn]] void goToSleep() {
   Serial.println("[x3] sleep");
   stopWifi();
-  if (app.screen == Screen::Wifi) app.screen = Screen::List;
+  closeBook();
+  if (app.screen == Screen::Wifi || app.screen == Screen::Reader) app.screen = Screen::Library;
   // This image stays on the panel while off, so clean first: no ghosts.
   cleanPanel();
   updateStatus();
-  ui::drawList(screen, app, true);
+  ui::drawLendingCard(screen, app);
   epd.displayBuffer(EInkDisplay::HALF_REFRESH);
   epd.deepSleep();
   SdMan.shutdown();
@@ -339,6 +646,7 @@ void setup() {
   rtc.begin();
   loadTasks();
   applySetTimeFile();
+  scanLibrary();
   app.lastInputMs = millis();
   render(true, /*deepClean=*/true);
 }
@@ -354,10 +662,23 @@ void loop() {
       if (!input.wasPressed(b)) continue;
       const Screen before = app.screen;
       const Effects fx = app.onButton(static_cast<Button>(b), now);
+      if (fx.closeBook) closeBook();
       if (fx.sleep) goToSleep();
       if (fx.stopWifi) stopWifi();
       if (fx.startWifi) startWifi();
       if (fx.save) saveTasks();
+      if (libraryDirty && app.screen == Screen::Library) scanLibrary();
+      if (fx.openBook && !openSelectedBook()) {
+        render(true);  // back on the shelf with the error
+        break;
+      }
+      if (fx.pageDelta != 0) {
+        const bool moved = fx.pageDelta > 0 ? bookReader.nextPage() : bookReader.prevPage();
+        if (!moved) break;  // first/last page: nothing to redraw
+        if (fx.pageDelta > 0 && bookReader.percent() >= 100 && openBookIndex >= 0) {
+          app.lib.books[openBookIndex].finished = true;
+        }
+      }
       if (fx.redraw) render(fx.fullRefresh || app.screen != before, fx.deepClean);
       break;
     }
@@ -367,6 +688,7 @@ void loop() {
   if (now - lastTick >= 500) {
     lastTick = now;
     const Effects fx = app.onTick(now);
+    if (fx.closeBook) closeBook();
     if (fx.sleep) goToSleep();
     if (fx.redraw) render(fx.fullRefresh);
   }

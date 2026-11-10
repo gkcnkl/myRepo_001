@@ -92,6 +92,9 @@ static void testUpper() {
   char want[64];
   utf8ToFont("SALI, ÇĞIÖŞÜ İZ", want, sizeof want);
   CHECK(strcmp(out, want) == 0);
+  utf8ToFont("rabbit-hole", out, sizeof out);
+  upperFont(out, false);
+  CHECK(strcmp(out, "RABBIT-HOLE") == 0);
 }
 
 static void testLayoutFits() {
@@ -156,9 +159,8 @@ static void testListNavigation() {
   CHECK(fx.save && fx.redraw && a.tasks.items[0].done);
   fx = a.onButton(Button::Confirm, 0);
   CHECK(!a.tasks.items[0].done);
-  fx = a.onButton(Button::Back, 0);
-  CHECK(fx.redraw && fx.deepClean);
-  CHECK(!a.onButton(Button::Down, 0).deepClean);
+  fx = a.onButton(Button::Back, 0);  // BACK opens the bookshelf
+  CHECK(fx.redraw && a.screen == Screen::Library);
   CHECK(a.onButton(Button::Power, 0).sleep);
 }
 
@@ -257,6 +259,121 @@ static void testWifiFlow() {
   CHECK(empty.onButton(Button::Left, 0).startWifi);
 }
 
+static void testLibraryModel() {
+  BookInfo b;
+  CHECK(bookFromFileName("Kürk_Mantolu_Madonna.EPUB", 300000, b));
+  CHECK(strcmp(b.title, "Kürk Mantolu Madonna") == 0 && !b.isText && strlen(b.id) == 8);
+  CHECK(bookFromFileName("notlar.txt", 10, b) && b.isText);
+  CHECK(!bookFromFileName("kapak.jpg", 10, b));
+  CHECK(!bookFromFileName(".gizli.epub", 10, b));
+
+  BookInfo s;
+  bookFromFileName("x.epub", 1000, s);
+  strcpy(s.title, "Suç ve Ceza");
+  strcpy(s.author, "Dostoyevski");
+  s.started = DateStamp{2026, 11, 10};
+  s.lastRead = 202611101530ull;
+  s.spine = 7;
+  s.charOffset = 12345;
+  s.percent = 42;
+  char buf[512];
+  serializeBookState(s, buf, sizeof buf);
+  BookInfo t;
+  bookFromFileName("x.epub", 1000, t);
+  parseBookState(buf, strlen(buf), t);
+  CHECK(strcmp(t.title, "Suç ve Ceza") == 0 && strcmp(t.author, "Dostoyevski") == 0);
+  CHECK(t.started.year == 2026 && t.started.month == 11 && t.started.day == 10);
+  CHECK(t.lastRead == 202611101530ull && t.spine == 7 && t.charOffset == 12345 && t.percent == 42 && !t.finished);
+
+  Library lib;
+  const char* names[] = {"c.epub", "a.epub", "b.epub", "d.txt"};
+  for (const char* n : names) bookFromFileName(n, 50000, lib.books[lib.count++]);
+  lib.sortByTitle();
+  CHECK(strcmp(lib.books[0].title, "a") == 0 && strcmp(lib.books[3].title, "d") == 0);
+  lib.books[1].lastRead = 5;  // b
+  lib.books[2].lastRead = 9;  // c
+  lib.books[3].lastRead = 7;  // d, finished
+  lib.books[3].finished = true;
+  const BookInfo* reading[4];
+  CHECK(lib.inProgress(reading, 4) == 2);
+  CHECK(strcmp(reading[0]->title, "c") == 0 && strcmp(reading[1]->title, "b") == 0);
+  CHECK(lib.inProgress(reading, 1) == 1 && strcmp(reading[0]->title, "c") == 0);
+}
+
+static void testShelfLayout() {
+  Library lib;
+  for (int i = 0; i < 20; ++i) {
+    char n[16];
+    snprintf(n, sizeof n, "k%02d.epub", i);
+    bookFromFileName(n, 100000u * (i + 1), lib.books[lib.count++]);
+  }
+  SpineBox boxes[Library::kMax + 1];
+  const int shelves = ShelfLayout::place(lib, boxes, Library::kMax + 1);
+  CHECK(shelves >= 2);
+  for (int i = 0; i <= lib.count; ++i) {
+    CHECK(boxes[i].x >= ShelfLayout::kLeft && boxes[i].x + boxes[i].w <= ShelfLayout::kRight);
+    CHECK(boxes[i].h <= ShelfLayout::kMaxSpineH && boxes[i].w >= 30);
+    if (i > 0 && boxes[i].shelf == boxes[i - 1].shelf) CHECK(boxes[i].x > boxes[i - 1].x);  // side by side
+  }
+  CHECK(boxes[lib.count].w == ShelfLayout::kAddW);  // the "+ Ekle" spine comes last
+
+  // Thicker books get thicker spines.
+  BookInfo small, big;
+  bookFromFileName("s.epub", 20 * 1024, small);
+  bookFromFileName("b.epub", 3000 * 1024, big);
+  CHECK(ShelfLayout::spineWidth(big) > ShelfLayout::spineWidth(small));
+}
+
+static void testLibraryNavigation() {
+  App a;
+  a.tasks.loadSample();
+  Effects fx = a.onButton(Button::Back, 0);  // briefing -> shelf
+  CHECK(a.screen == Screen::Library && fx.redraw);
+  // Empty shelf: only "+ Ekle"; TAMAM opens Wi-Fi and BACK there returns here.
+  CHECK(a.libSelected == 0);
+  fx = a.onButton(Button::Confirm, 0);
+  CHECK(a.screen == Screen::Wifi && fx.startWifi);
+  fx = a.onButton(Button::Back, 0);
+  CHECK(a.screen == Screen::Library && fx.stopWifi);
+
+  for (int i = 0; i < 20; ++i) {
+    char n[16];
+    snprintf(n, sizeof n, "k%02d.epub", i);
+    bookFromFileName(n, 100000u * (i + 1), a.lib.books[a.lib.count++]);
+  }
+  a.libSelected = 0;
+  a.onButton(Button::Left, 0);
+  CHECK(a.libSelected == a.lib.count);  // wraps to "+ Ekle"
+  a.onButton(Button::Right, 0);
+  CHECK(a.libSelected == 0);
+  SpineBox boxes[Library::kMax + 1];
+  ShelfLayout::place(a.lib, boxes, Library::kMax + 1);
+  a.onButton(Button::Down, 0);
+  CHECK(boxes[a.libSelected].shelf == 1);
+  a.onButton(Button::Up, 0);
+  CHECK(boxes[a.libSelected].shelf == 0);
+  CHECK(!a.onButton(Button::Up, 0).redraw);  // no shelf above
+  // Walk to the last item: the view scrolls so it stays on screen.
+  for (int i = 0; i < a.lib.count; ++i) a.onButton(Button::Right, 0);
+  CHECK(boxes[a.libSelected].shelf >= a.shelfScroll &&
+        boxes[a.libSelected].shelf < a.shelfScroll + ShelfLayout::kShelves);
+
+  a.libSelected = 3;
+  fx = a.onButton(Button::Confirm, 0);
+  CHECK(a.screen == Screen::Reader && fx.openBook);
+  CHECK(a.onButton(Button::Right, 0).pageDelta == 1);
+  CHECK(a.onButton(Button::Down, 0).pageDelta == 1);
+  CHECK(a.onButton(Button::Left, 0).pageDelta == -1);
+  CHECK(a.onButton(Button::Up, 0).pageDelta == -1);
+  CHECK(!a.onTick(App::kIdleSleepMs).sleep);  // reading allows longer idle
+  fx = a.onButton(Button::Power, 0);
+  CHECK(fx.sleep && fx.closeBook);
+  fx = a.onButton(Button::Back, 0);
+  CHECK(a.screen == Screen::Library && fx.closeBook);
+  fx = a.onButton(Button::Back, 0);
+  CHECK(a.screen == Screen::List);
+}
+
 static void testEmptyList() {
   App a;
   CHECK(!a.onButton(Button::Confirm, 0).save);
@@ -313,6 +430,9 @@ int main() {
   testIdleSleep();
   testEmptyList();
   testWifiFlow();
+  testLibraryModel();
+  testShelfLayout();
+  testLibraryNavigation();
   if (failures) {
     printf("%d check(s) failed\n", failures);
     return 1;

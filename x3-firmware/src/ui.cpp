@@ -174,7 +174,8 @@ int16_t countCell(Adafruit_GFX& g, const char* value, const char* caption, int16
 }
 
 // Masthead: eyebrow, serif title, counts on the right, 2px rule, dateline.
-void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* title, bool showCounts) {
+void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* title, bool showCounts,
+              bool showSubtitle = true) {
   label(g, eyebrow, kM, 26);
 
   int16_t countsLeft = kW - kM;
@@ -202,7 +203,7 @@ void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* 
     snprintf(date, sizeof date, "%s", d.s);
   }
   drawTracked(g, &InterSemi12, date, kM, 124, 1, 1);
-  if (app.tasks.subtitle[0]) {
+  if (showSubtitle && app.tasks.subtitle[0]) {
     const int16_t x = kM + trackedWidth(&InterSemi12, date, 1) + 14;
     text(g, &Inter14, app.tasks.subtitle, x, 124, kW - kM - x);
   }
@@ -430,6 +431,296 @@ void drawWifi(Adafruit_GFX& g, const App& app) {
   }
 
   statusBar(g, "Geri · çık", "WI-FI açık", "10 dk kullanılmazsa kapanır");
+}
+
+namespace {
+
+// Draws encoded text rotated 90° counter-clockwise (reading bottom to top, as
+// on Turkish and most European book spines). (x, y) is the start of the
+// baseline: text runs upwards from y, glyph tops point left of x.
+void drawRotatedEnc(Adafruit_GFX& g, const GFXfont* f, const char* enc, int16_t x, int16_t y, uint16_t color) {
+  for (const auto* p = reinterpret_cast<const unsigned char*>(enc); *p; ++p) {
+    if (*p < f->first || *p > f->last) continue;
+    const GFXglyph& gl = f->glyph[*p - f->first];
+    const uint8_t* bits = f->bitmap + gl.bitmapOffset;
+    uint16_t bit = 0;
+    for (int gy = 0; gy < gl.height; ++gy) {
+      for (int gx = 0; gx < gl.width; ++gx, ++bit) {
+        if (!(bits[bit >> 3] & (0x80 >> (bit & 7)))) continue;
+        const int tx = gl.xOffset + gx;  // along the text
+        const int ty = gl.yOffset + gy;  // from the baseline (negative = up)
+        g.drawPixel(x + ty, y - tx, color);
+      }
+    }
+    y -= gl.xAdvance;
+  }
+}
+
+uint16_t advanceWidth(const GFXfont* f, const char* enc) {
+  uint16_t w = 0;
+  for (const auto* p = reinterpret_cast<const unsigned char*>(enc); *p; ++p)
+    if (*p >= f->first && *p <= f->last) w += f->glyph[*p - f->first].xAdvance;
+  return w;
+}
+
+// Truncates by advance width (rotated text cannot use getTextBounds).
+void fitAdvance(const GFXfont* f, char* enc, uint16_t maxW) {
+  if (advanceWidth(f, enc) <= maxW) return;
+  size_t n = strlen(enc);
+  while (n > 0) {
+    enc[--n] = '\0';
+    char tmp[210];
+    snprintf(tmp, sizeof tmp, "%s...", enc);
+    if (advanceWidth(f, tmp) <= maxW) {
+      strcpy(enc, tmp);
+      return;
+    }
+  }
+}
+
+const char* const kMonthAbbr[] = {"Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"};
+
+void formatStamp(const DateStamp& d, char* out, size_t n) {
+  if (!d.known()) {
+    snprintf(out, n, "–");
+    return;
+  }
+  snprintf(out, n, "%u %s %u", d.day, kMonthAbbr[(d.month + 11) % 12], d.year);
+}
+
+void spine(Adafruit_GFX& g, const BookInfo& b, const SpineBox& box, bool selected) {
+  const uint16_t ink = selected ? 0 : 1;
+  if (selected) {
+    g.fillRect(box.x, box.y, box.w, box.h, 1);
+  } else {
+    g.drawRect(box.x, box.y, box.w, box.h, 1);
+    g.drawRect(box.x + 1, box.y + 1, box.w - 2, box.h - 2, 1);
+  }
+  // Classic spine bands near the head and the foot.
+  g.drawFastHLine(box.x + 4, box.y + 10, box.w - 8, ink);
+  g.drawFastHLine(box.x + 4, box.y + 13, box.w - 8, ink);
+  g.drawFastHLine(box.x + 4, box.y + box.h - 14, box.w - 8, ink);
+  g.drawFastHLine(box.x + 4, box.y + box.h - 11, box.w - 8, ink);
+  // Bookmark ribbon on books being read.
+  if (b.lastRead != 0 && !b.finished) {
+    const int16_t rx = box.x + box.w - 12;
+    g.fillRect(rx, box.y - 2, 6, 16, ink == 1 ? 1 : 0);
+    g.fillTriangle(rx, box.y + 14, rx + 5, box.y + 14, rx + 2, box.y + 10, selected ? 1 : 0);
+  }
+
+  // Title along the spine: serif if it fits, then sans, then two lines on a
+  // thick spine, then truncated.
+  const int16_t room = box.h - 32;
+  Encoded e(b.title);
+  const GFXfont* f = nullptr;
+  int16_t capH = 0;
+  if (box.w >= 34 && advanceWidth(&Play18, e.s) <= room) f = &Play18, capH = 12;
+  else if (box.w >= 34 && advanceWidth(&InterMed18, e.s) <= room) f = &InterMed18, capH = 13;
+  else if (advanceWidth(&Inter14, e.s) <= room || box.w < 44) f = &Inter14, capH = 10;
+  if (f != nullptr) {
+    fitAdvance(f, e.s, room);
+    const int16_t len = advanceWidth(f, e.s);
+    drawRotatedEnc(g, f, e.s, box.x + box.w / 2 + capH / 2, box.y + 16 + (room + len) / 2, ink);
+    return;
+  }
+  // Two lines: split at the space closest to the middle.
+  const size_t n = strlen(e.s);
+  size_t cut = 0;
+  for (size_t i = 1; i < n; ++i)
+    if (e.s[i] == ' ' && (cut == 0 || (i > n / 2 ? i - n / 2 : n / 2 - i) < (cut > n / 2 ? cut - n / 2 : n / 2 - cut)))
+      cut = i;
+  if (cut == 0) {  // one long word: never break it, truncate instead
+    fitAdvance(&Inter14, e.s, room);
+    drawRotatedEnc(g, &Inter14, e.s, box.x + box.w / 2 + 5, box.y + 16 + (room + advanceWidth(&Inter14, e.s)) / 2, ink);
+    return;
+  }
+  char a[210], c[210];
+  snprintf(a, sizeof a, "%.*s", static_cast<int>(cut), e.s);
+  snprintf(c, sizeof c, "%s", e.s + cut + (e.s[cut] == ' ' ? 1 : 0));
+  fitAdvance(&Inter14, a, room);
+  fitAdvance(&Inter14, c, room);
+  const int16_t mid = box.x + box.w / 2;
+  drawRotatedEnc(g, &Inter14, a, mid - 2, box.y + 16 + (room + advanceWidth(&Inter14, a)) / 2, ink);
+  drawRotatedEnc(g, &Inter14, c, mid + 14, box.y + 16 + (room + advanceWidth(&Inter14, c)) / 2, ink);
+}
+
+void addSpine(Adafruit_GFX& g, const SpineBox& box, bool selected) {
+  const uint16_t ink = selected ? 0 : 1;
+  if (selected) {
+    g.fillRect(box.x, box.y, box.w, box.h, 1);
+  } else {
+    for (int16_t i = 0; i < box.h; i += 6) {  // dashed outline
+      g.drawFastVLine(box.x, box.y + i, 3, 1);
+      g.drawFastVLine(box.x + box.w - 1, box.y + i, 3, 1);
+    }
+    for (int16_t i = 0; i < box.w; i += 6) {
+      g.drawFastHLine(box.x + i, box.y, 3, 1);
+      g.drawFastHLine(box.x + i, box.y + box.h - 1, 3, 1);
+    }
+  }
+  Encoded e("+ Kitap ekle", true);
+  const int16_t len = trackedWidth(&InterSemi12, e.s, 2);
+  // Tracked rotated label: draw char by char.
+  int16_t y = box.y + (box.h + len) / 2;
+  const int16_t x = box.x + box.w / 2 + 4;
+  for (const auto* p = reinterpret_cast<const unsigned char*>(e.s); *p; ++p) {
+    char one[2] = {static_cast<char>(*p), 0};
+    drawRotatedEnc(g, &InterSemi12, one, x, y, ink);
+    if (*p >= InterSemi12.first && *p <= InterSemi12.last) y -= InterSemi12.glyph[*p - InterSemi12.first].xAdvance + 2;
+  }
+}
+
+}  // namespace
+
+void drawLibrary(Adafruit_GFX& g, const App& app) {
+  g.fillScreen(0);
+  const Library& lib = app.lib;
+  const BookInfo* reading[Library::kMax];
+  const int readingCount = lib.inProgress(reading, Library::kMax);
+
+  char eyebrow[48];
+  snprintf(eyebrow, sizeof eyebrow, "GK'nin kitaplığı · %d okunuyor", readingCount);
+  masthead(g, app, eyebrow, "Kitaplık", false, false);
+  {
+    char v[8];
+    int16_t left = kW - kM;
+    if (app.batteryPercent >= 0) {
+      snprintf(v, sizeof v, "%%%d", app.batteryPercent);
+      left = countCell(g, v, app.charging ? "şarj" : "pil", left) - 22;
+    }
+    snprintf(v, sizeof v, "%d", lib.count);
+    countCell(g, v, "kitap", left);
+  }
+
+  SpineBox boxes[Library::kMax + 1];
+  ShelfLayout::place(lib, boxes, Library::kMax + 1);
+  const int items = lib.count + 1;
+  int lastShelf = 0;
+  for (int i = 0; i < items; ++i) lastShelf = boxes[i].shelf > lastShelf ? boxes[i].shelf : lastShelf;
+  for (int s = 0; s < ShelfLayout::kShelves; ++s) {
+    // Board under every visible shelf, even an empty one: it reads as a bookcase.
+    const int16_t boardY = ShelfLayout::kTop + s * ShelfLayout::kShelfH + ShelfLayout::kMaxSpineH;
+    g.fillRect(ShelfLayout::kLeft - 10, boardY, ShelfLayout::kRight - ShelfLayout::kLeft + 20, ShelfLayout::kBoard, 1);
+    hairline(g, ShelfLayout::kLeft - 10, boardY + ShelfLayout::kBoard + 2, ShelfLayout::kRight - ShelfLayout::kLeft + 20);
+  }
+  for (int i = 0; i < items; ++i) {
+    const int s = boxes[i].shelf - app.shelfScroll;
+    if (s < 0 || s >= ShelfLayout::kShelves) continue;
+    SpineBox b = boxes[i];
+    b.y = static_cast<int16_t>(b.y + (s - boxes[i].shelf % ShelfLayout::kShelves) * ShelfLayout::kShelfH);
+    const bool sel = i == app.libSelected;
+    if (i == lib.count) addSpine(g, b, sel);
+    else spine(g, lib.books[i], b, sel);
+  }
+  if (app.shelfScroll > 0) label(g, "yukarıda daha var", kW - kM, ShelfLayout::kTop - 6, 2);
+  if (lastShelf >= app.shelfScroll + ShelfLayout::kShelves) {
+    label(g, "aşağıda daha var", kW - kM, ShelfLayout::kTop + ShelfLayout::kShelves * ShelfLayout::kShelfH - 2, 2);
+  }
+
+  // Selected book details.
+  const int16_t dy = ShelfLayout::kTop + ShelfLayout::kShelves * ShelfLayout::kShelfH + 6;
+  if (app.libSelected < lib.count) {
+    const BookInfo& b = lib.books[app.libSelected];
+    sectionHeading(g, "Seçili kitap", dy + 10);
+    text(g, &Play26, b.title, kM, dy + 44, kW - 2 * kM);
+    char line[160];
+    char stamp[24];
+    formatStamp(b.started, stamp, sizeof stamp);
+    if (b.finished) snprintf(line, sizeof line, "%s%sbitti", b.author, b.author[0] ? " · " : "");
+    else if (b.lastRead) snprintf(line, sizeof line, "%s%s%%%u · başladı %s", b.author, b.author[0] ? " · " : "", b.percent, stamp);
+    else snprintf(line, sizeof line, "%s%shenüz açılmadı", b.author, b.author[0] ? " · " : "");
+    text(g, &Inter14, line, kM, dy + 66, kW - 2 * kM);
+  } else {
+    sectionHeading(g, "Kitap ekle", dy + 10);
+    text(g, &Inter14, "TAMAM: Wi-Fi'ı açar; telefondan EPUB ya da TXT yükle.", kM, dy + 40, kW - 2 * kM);
+    if (lib.count == 0) text(g, &Inter14, "Raflar şimdilik boş.", kM, dy + 60, kW - 2 * kM);
+  }
+  if (app.libStatus[0]) label(g, app.libStatus, kW - kM, dy + 10, 2);
+
+  char left[24];
+  snprintf(left, sizeof left, "%d kitap", lib.count);
+  char wd[24];
+  statusBar(g, left, weekdayOf(app, wd, sizeof wd), "SOL/SAĞ kitap  ·  YUKARI/AŞAĞI raf  ·  TAMAM oku  ·  GERİ brifing");
+}
+
+void drawLendingCard(Adafruit_GFX& g, const App& app) {
+  g.fillScreen(0);
+  // The card: double rule frame with a punched hole at the top.
+  const int16_t cx = 20, cy = 20, cw = kW - 40, ch = kH - 92;
+  g.drawRect(cx, cy, cw, ch, 1);
+  g.drawRect(cx + 4, cy + 4, cw - 8, ch - 8, 1);
+  g.fillCircle(kW / 2, cy + 22, 7, 1);
+  g.fillCircle(kW / 2, cy + 22, 4, 0);
+
+  label(g, "Kütüphane ödünç kartı", 0, cy + 58, 1);
+  textCentered(g, &Play46, "GK'nin Kitaplığı", cy + 112);
+  g.fillRect(cx + 24, cy + 128, cw - 48, 2, 1);
+
+  // Columns: book | started | %.
+  const int16_t x0 = cx + 24, x1 = cx + cw - 196, x2 = cx + cw - 76, xEnd = cx + cw - 24;
+  const int16_t headY = cy + 156;
+  label(g, "Kitap", x0, headY);
+  label(g, "Başladı", x1 + 10, headY);
+  label(g, "%", xEnd, headY, 2);
+  g.drawFastHLine(x0, headY + 10, xEnd - x0, 1);
+
+  const BookInfo* reading[8];
+  const int n = app.lib.inProgress(reading, 8);
+  const int16_t rowH = 58, top = headY + 10;
+  const int rows = (cy + ch - 70 - top) / rowH;
+  g.drawFastVLine(x1, headY - 16, rows * rowH + 26, 1);
+  g.drawFastVLine(x2, headY - 16, rows * rowH + 26, 1);
+  for (int r = 0; r < rows; ++r) {
+    const int16_t y = top + r * rowH;
+    g.drawFastHLine(x0, y + rowH, xEnd - x0, 1);  // ruled card lines
+    if (r >= n) continue;
+    const BookInfo& b = *reading[r];
+    text(g, &InterMed18, b.title, x0, y + 28, x1 - x0 - 10);
+    if (b.author[0]) text(g, &Inter14, b.author, x0, y + 48, x1 - x0 - 10);
+    char stamp[24];
+    formatStamp(b.started, stamp, sizeof stamp);
+    // Date as a rubber stamp: serif in a thin box.
+    Encoded st(stamp);
+    const uint16_t sw = widthOf(g, &Play18, st.s);
+    const int16_t sx = x1 + (x2 - x1 - sw) / 2;
+    g.drawRoundRect(sx - 6, y + 14, sw + 12, 28, 4, 1);
+    drawEnc(g, &Play18, st.s, sx, y + 34, 1);
+    char pct[8];
+    snprintf(pct, sizeof pct, "%u", b.percent);
+    Encoded pe(pct);
+    drawEnc(g, &Play26, pe.s, xEnd - widthOf(g, &Play26, pe.s), y + 38, 1);
+  }
+  if (n == 0) textCentered(g, &Inter14, "Şu an okunan kitap yok.", top + 34);
+
+  g.fillRect(0, kBarTop, kW, kH - kBarTop, 1);
+  label(g, "Uyuyor", kM, kBarTop + 28, 0, 0);
+  char wd[24];
+  label(g, app.dateText[0] ? app.dateText : weekdayOf(app, wd, sizeof wd), kW - kM, kBarTop + 28, 2, 0);
+  textCentered(g, &Inter14, "Açmak için GÜÇ tuşuna bas", kBarTop + 54, 0);
+}
+
+void drawReaderFooter(Adafruit_GFX& g, const char* chapter, uint8_t percent, uint32_t page, uint32_t pages,
+                      bool turkish) {
+  const int16_t y = kH - 40;
+  g.fillRect(0, y, kW, 40, 0);
+  hairline(g, kM, y + 4, kW - 2 * kM);
+  char right[32];
+  snprintf(right, sizeof right, "%lu/%lu · %%%u", static_cast<unsigned long>(page), static_cast<unsigned long>(pages),
+           percent);
+  Encoded r(right, true);
+  const uint16_t rw = trackedWidth(&InterSemi12, r.s, 2);
+  drawTracked(g, &InterSemi12, r.s, kW - kM - rw, y + 28, 2, 1);
+  Encoded c(chapter[0] ? chapter : "");
+  upperFont(c.s, turkish);
+  fitWidth(g, &InterSemi12, c.s, kW - 2 * kM - rw - 40);
+  drawTracked(g, &InterSemi12, c.s, kM, y + 28, 2, 1);
+}
+
+void drawReaderMessage(Adafruit_GFX& g, const App& app, const char* title, const char* message) {
+  g.fillScreen(0);
+  masthead(g, app, "Kitaplık", "Okuyucu", false, false);
+  textCentered(g, &Play26, title, 380);
+  textCentered(g, &Inter14, message, 414);
 }
 
 }  // namespace ui

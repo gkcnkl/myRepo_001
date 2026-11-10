@@ -28,11 +28,28 @@ label.file{background:transparent;color:var(--ink);display:inline-flex;align-ite
 input[type=file]{display:none}
 .pill{display:inline-block;background:var(--lila-soft);color:var(--mor);border-radius:999px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;font-weight:600}
 .note{font-size:12px;color:var(--muted);margin-top:10px}
+.book{display:flex;gap:12px;align-items:center;padding:12px 2px;border-bottom:1px solid var(--line)}
+.book .t{flex:1;min-width:0;color:var(--ink);font-weight:500;overflow-wrap:anywhere}
+.book .m{font-size:12px;color:var(--muted);white-space:nowrap}
+.book button{padding:8px 12px;min-height:36px;background:transparent;color:var(--ink)}
+.empty{font-size:13.5px;color:var(--muted);padding:14px 2px;border-bottom:1px solid var(--line)}
+progress{width:100%;height:6px;margin-top:12px;accent-color:var(--lila)}
 </style></head><body><div class="wrap">
 <div class="eyebrow">XTEINK X3 · WI-FI AKTARIM</div>
-<h1>Brifing</h1>
+<h1>Aktarım</h1>
 <div class="rule"></div>
 <div class="dateline" id="clock">Saat ayarlanıyor…</div>
+
+<div class="sec">
+<h2>Kitaplar</h2><div class="hr"></div>
+<div id="books"><div class="empty">Yükleniyor…</div></div>
+<div class="row">
+<label class="file">Kitap ekle<input type="file" id="bf" accept=".epub,.txt,application/epub+zip,text/plain" multiple></label>
+<span class="pill" id="bst" hidden></span>
+</div>
+<progress id="bp" max="100" value="0" hidden></progress>
+<div class="note">EPUB (DRM'siz) ya da TXT. Kitaplar SD karttaki <code>/kitaplar</code> klasörüne yazılır; cihazda rafta görünür.</div>
+</div>
 
 <div class="sec">
 <h2>brifing.txt</h2><div class="hr"></div>
@@ -58,6 +75,33 @@ document.getElementById('save').onclick=function(){
   show('Gönderiliyor…');
   fetch('/brifing',{method:'POST',body:t.value}).then(function(r){return r.text()}).then(show).catch(function(){show('Gönderilemedi')});
 };
+var books=document.getElementById('books'),bst=document.getElementById('bst'),bp=document.getElementById('bp');
+function bshow(m){bst.textContent=m;bst.hidden=false}
+function esc(x){return x.replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function loadBooks(){
+  fetch('/kitaplar').then(function(r){return r.text()}).then(function(x){
+    var rows=x.split('\n').filter(Boolean);
+    if(!rows.length){books.innerHTML='<div class="empty">Raflar boş.</div>';return}
+    books.innerHTML=rows.map(function(r){var c=r.split('\t');
+      return '<div class="book"><span class="t">'+esc(c[1]||c[0])+'</span><span class="m">'+esc(c[2])+'</span><button data-n="'+esc(c[0])+'">Sil</button></div>'}).join('');
+  }).catch(function(){books.innerHTML='<div class="empty">Liste alınamadı.</div>'});
+}
+books.onclick=function(e){
+  var n=e.target.getAttribute&&e.target.getAttribute('data-n');if(!n)return;
+  if(!confirm(n+' silinsin mi?'))return;
+  fetch('/kitap-sil',{method:'POST',body:n}).then(function(r){return r.text()}).then(function(m){bshow(m);loadBooks()});
+};
+function upload(files,i){
+  if(i>=files.length){bp.hidden=true;loadBooks();return}
+  var f=files[i],fd=new FormData();fd.append('kitap',f,f.name);
+  var x=new XMLHttpRequest();x.open('POST','/kitap');
+  x.upload.onprogress=function(e){if(e.lengthComputable){bp.value=e.loaded*100/e.total}};
+  x.onload=function(){bshow(x.responseText);upload(files,i+1)};
+  x.onerror=function(){bshow(f.name+' yüklenemedi');bp.hidden=true};
+  bp.hidden=false;bp.value=0;bshow((i+1)+'/'+files.length+' · '+f.name);x.send(fd);
+}
+document.getElementById('bf').onchange=function(e){upload(e.target.files,0);e.target.value=''};
+loadBooks();
 document.getElementById('f').onchange=function(e){
   var file=e.target.files[0];if(!file)return;
   var rd=new FileReader();rd.onload=function(){t.value=rd.result;show('Dosya yüklendi, Kaydet’e bas')};rd.readAsText(file,'utf-8');

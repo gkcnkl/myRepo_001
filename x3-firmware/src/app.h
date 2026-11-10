@@ -1,12 +1,13 @@
 #pragma once
 #include <stdint.h>
 
+#include "library.h"
 #include "tasks.h"
 
 // Hardware-independent app state machine. main.cpp feeds it button presses
 // and time; it says what to redraw, save or do next.
 enum class Button : uint8_t { Back, Confirm, Left, Right, Up, Down, Power };
-enum class Screen : uint8_t { List, Focus, FocusDone, Wifi };
+enum class Screen : uint8_t { List, Focus, FocusDone, Wifi, Library, Reader };
 
 struct Effects {
   bool redraw = false;
@@ -16,6 +17,9 @@ struct Effects {
   bool sleep = false;        // enter deep sleep
   bool startWifi = false;    // open the transfer hotspot + web page
   bool stopWifi = false;     // close it again
+  bool openBook = false;     // open app.lib.books[app.libSelected] (main may fall back)
+  bool closeBook = false;    // save the position and close the reader
+  int8_t pageDelta = 0;      // +1 next page, -1 previous page
 };
 
 struct App {
@@ -23,6 +27,8 @@ struct App {
   static constexpr uint32_t kIdleSleepMs = 3UL * 60UL * 1000UL;
   // The transfer page is used from a phone, not the buttons: allow longer.
   static constexpr uint32_t kWifiIdleMs = 10UL * 60UL * 1000UL;
+  // A page can take a while to read.
+  static constexpr uint32_t kReaderIdleMs = 10UL * 60UL * 1000UL;
 
   // List layout (pixels, portrait 528x792), shared with ui.cpp so scrolling
   // and drawing agree on what fits.
@@ -36,6 +42,13 @@ struct App {
   Screen screen = Screen::List;
   int selected = 0;
   int scroll = 0;  // first visible row on the list
+
+  // Bookshelf: items 0..lib.count-1 are books, lib.count is the "+ Ekle" spine.
+  Library lib;
+  int libSelected = 0;
+  int shelfScroll = 0;  // first visible shelf
+  Screen wifiReturn = Screen::List;  // where BACK on the Wi-Fi screen goes
+  char libStatus[64] = "";  // e.g. "Kitap açılamadı"
 
   int focusTask = -1;
   uint32_t focusStartMs = 0;
@@ -74,4 +87,6 @@ struct App {
 
  private:
   void keepSelectionVisible();
+  void keepShelfVisible();
+  Effects onLibraryButton(Button b);
 };

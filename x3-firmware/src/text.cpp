@@ -43,10 +43,10 @@ void utf8ToFont(const char* in, char* out, size_t outSize) {
   out[o] = '\0';
 }
 
-void upperFont(char* enc) {
+void upperFont(char* enc, bool turkish) {
   for (auto* p = reinterpret_cast<unsigned char*>(enc); *p; ++p) {
     const unsigned char c = *p;
-    if (c == 'i') *p = 0x84;                                  // i -> İ
+    if (c == 'i') *p = turkish ? 0x84 : 'I';                  // i -> İ (Turkish) or I
     else if (c >= 'a' && c <= 'z') *p = c - 'a' + 'A';
     else if (c == 0x85) *p = 'I';                             // ı -> I
     else if (c >= 0x81 && c <= 0x8B && (c & 1)) *p = c - 1;   // ç ğ ö ş ü -> upper

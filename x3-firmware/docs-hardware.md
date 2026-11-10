@@ -16,3 +16,9 @@
 | Sol alt, soldaki | GERİ (`BTN_BACK`)    |
 | Sol orta         | YUKARI (`BTN_UP`)    |
 | Sol üst          | Donanım reset (yazılım okuyamaz) |
+
+## Bellek (PSRAM yok)
+
+Okuyucu açılırken ayrı bloklar halinde ~200 KB ayırır (sayfalama 112 KB,
+katalog 40 KB, fontlar 32 KB, dizin/CSS 16 KB) ve kitap kapanınca bırakır.
+Wi-Fi okuma sırasında kapalıdır. Yetmezse rafa "Bellek yetmedi" yazılır.
