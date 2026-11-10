@@ -40,6 +40,16 @@ struct Memory {
 
 enum class OpenResult : uint8_t { Ok, NotFound, Encrypted, TooBig, Broken };
 
+// Images larger than this (bytes, uncompressed) are not decoded on the device:
+// a 2-3 MB cover JPEG takes tens of seconds on the ESP32-C3. A framed
+// placeholder is drawn in their place.
+constexpr uint32_t kMaxImageBytes = 200 * 1024;
+
+// Optional progress hook (e.g. a crash breadcrumb): called with a short step
+// name ("katalog", "bolum", "sayfa") and a number (chapter or page index).
+using TraceFn = void (*)(const char* step, int value);
+void setTrace(TraceFn fn);
+
 struct Position {
   uint16_t spine = 0;
   uint32_t charOffset = 0;  // layout independent: survives font/size changes
@@ -93,6 +103,7 @@ class BookReader {
   bool open_ = false;
   uint16_t spine_ = 0;
   uint16_t spineCount_ = 0;
+  uint16_t firstSpine_ = 0;  // 1 when a cover-only first chapter is skipped
   uint32_t page_ = 0;
   uint32_t chapterPages_ = 0;
 

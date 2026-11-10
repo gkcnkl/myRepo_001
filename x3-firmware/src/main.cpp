@@ -21,6 +21,7 @@
 #include <driver/gpio.h>
 #include <esp_heap_caps.h>
 #include <esp_random.h>
+#include <esp_system.h>
 
 #include "app.h"
 #include "clock.h"
@@ -30,7 +31,26 @@
 #include "ui.h"
 #include "webpage.h"
 
+// The reading engine (expat, stb_truetype, JPEG/PNG decode) needs more than
+// Arduino's default 8 KB loop stack, as CrossPoint found on the same chip.
+SET_LOOP_TASK_STACK_SIZE(20 * 1024);
+
 namespace {
+
+// Crash breadcrumb: survives a panic/watchdog reset (not a power cut), so the
+// next boot can say what the reader was doing. Cleared after each success.
+struct Breadcrumb {
+  uint32_t magic;
+  char step[64];
+};
+RTC_NOINIT_ATTR Breadcrumb crumb;
+constexpr uint32_t kCrumbMagic = 0x58334252;  // "X3BR"
+
+void setCrumb(const char* fmt, const char* a, int b) {
+  crumb.magic = kCrumbMagic;
+  snprintf(crumb.step, sizeof crumb.step, fmt, a, b);
+}
+void clearCrumb() { crumb.magic = 0; }
 
 constexpr int PIN_SCLK = 8;
 constexpr int PIN_MOSI = 10;
@@ -320,6 +340,16 @@ void closeBook() {
   openBookIndex = -1;
 }
 
+void readerTrace(const char* step, int value) {
+  const char* what = strcmp(step, "katalog") == 0 ? "katalog okunurken"
+                     : strcmp(step, "bolum") == 0  ? "bölüm %d sayfalanırken"
+                                                   : "sayfa %d çizilirken";
+  crumb.magic = kCrumbMagic;
+  snprintf(crumb.step, sizeof crumb.step, what, value + 1);
+  Serial.printf("[x3] reader: %s %d (heap %u, largest %u)\n", step, value, heap_caps_get_free_size(MALLOC_CAP_8BIT),
+                heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+}
+
 // Opens app.lib.books[app.libSelected]; on failure returns to the shelf.
 bool openSelectedBook() {
   const int index = app.libSelected;
@@ -331,6 +361,7 @@ bool openSelectedBook() {
   snprintf(path, sizeof path, "%s/%s", kBooksDir, b.file);
   char dir[64];
   bookDir(b, dir, sizeof dir);
+  setCrumb("%s açılırken", b.file, 0);
   if (!allocReaderMemory()) {
     error = "Bellek yetmedi";
   } else if (!bookSource.open(path)) {
@@ -352,6 +383,7 @@ bool openSelectedBook() {
     freeReaderMemory();
     snprintf(app.libStatus, sizeof app.libStatus, "%s", error);
     app.screen = Screen::Library;
+    clearCrumb();
     return false;
   }
   openBookIndex = index;
@@ -373,6 +405,7 @@ bool openSelectedBook() {
 
 void renderReaderPage() {
   bookReader.render(epd.getFrameBuffer());
+  clearCrumb();  // the page is drawn: whatever was risky succeeded
   ui::drawReaderFooter(screen, bookReader.chapterTitle(), bookReader.percent(), bookReader.page() + 1,
                        bookReader.chapterPages(), bookReader.isTurkish());
 }
@@ -642,6 +675,20 @@ void setup() {
   epd.begin();
   epd.requestResync();
   screen.setRotation(3);  // portrait 528x792, upright on the X3
+
+  // Did the last session crash inside the reader?
+  const esp_reset_reason_t reason = esp_reset_reason();
+  const bool crashed = reason == ESP_RST_PANIC || reason == ESP_RST_INT_WDT || reason == ESP_RST_TASK_WDT ||
+                       reason == ESP_RST_WDT || reason == ESP_RST_BROWNOUT;
+  if (crashed && crumb.magic == kCrumbMagic) {
+    crumb.step[sizeof crumb.step - 1] = '\0';
+    snprintf(app.libStatus, sizeof app.libStatus, "Çöktü: %s", crumb.step);
+    Serial.printf("[x3] previous run crashed (reason %d) %s\n", static_cast<int>(reason), crumb.step);
+  } else if (crashed) {
+    snprintf(app.libStatus, sizeof app.libStatus, "Yeniden başladı (hata %d)", static_cast<int>(reason));
+  }
+  clearCrumb();
+  reader::setTrace(readerTrace);
 
   rtc.begin();
   loadTasks();

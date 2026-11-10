@@ -29,6 +29,28 @@ constexpr int16_t kMarginTop = 30;
 // Bump when anything that changes page layout changes (fonts, metrics).
 constexpr uint32_t kFontFingerprint = 0x4C495431u /* "LIT1" */ ^ (kBodySizePx << 8);
 
+TraceFn gTrace = nullptr;
+void trace(const char* step, int value) {
+  if (gTrace != nullptr) gTrace(step, value);
+}
+
+// Thin frame with a cross where an image was skipped (logical portrait coords;
+// FrameRotation::Portrait maps (x, y) to panel (y, 527 - x)).
+void placeholder(uint8_t* fb, int16_t x, int16_t y, int16_t w, int16_t h) {
+  auto plot = [fb](int px, int py) {
+    if (px < 0 || py < 0 || px >= kPageW || py >= kPageH) return;
+    const int col = py, row = kPageW - 1 - px;
+    fb[row * (kPageH / 8) + (col >> 3)] &= static_cast<uint8_t>(~(0x80 >> (col & 7)));
+  };
+  for (int i = 0; i < w; ++i) plot(x + i, y), plot(x + i, y + h - 1);
+  for (int i = 0; i < h; ++i) plot(x, y + i), plot(x + w - 1, y + i);
+  const int n = w > h ? w : h;
+  for (int i = 0; i < n; i += 2) {
+    plot(x + i * w / n, y + i * h / n);
+    plot(x + w - 1 - i * w / n, y + i * h / n);
+  }
+}
+
 bool startsWithLang(const char* lang, const char* prefix) {
   if (lang == nullptr) return false;
   const size_t n = strlen(prefix);
@@ -54,6 +76,8 @@ struct BookReader::Impl {
   PageCacheReader pages;
   bool pagesOpen = false;
 };
+
+void setTrace(TraceFn fn) { gTrace = fn; }
 
 namespace {
 BookReader::Impl* gImpl = nullptr;  // one reader per device; storage below
@@ -85,6 +109,7 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
 
   const char* lang = "tr";
   if (!isText) {
+    trace("katalog", 0);
     const BookStatus st = m.book.open(source, m.bookArena, m.scratch);
     m.scratch.reset();
     if (st == BookStatus::Encrypted) return OpenResult::Encrypted;
@@ -139,11 +164,28 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
     close();
     return OpenResult::Broken;
   }
+  // A cover-only first chapter (an image, no text) is skipped: start reading
+  // where the text starts.
+  if (!isText && spineCount_ > 1 && chapterPages_ <= 1) {
+    Page page{};
+    m.scratch.reset();
+    const bool coverOnly = chapterPages_ == 0 || (m.pages.readPage(0, m.scratch, &page) == BookStatus::Ok &&
+                                                   page.runCount == 0);
+    m.scratch.reset();
+    if (coverOnly) {
+      firstSpine_ = 1;
+      if (!openChapter(1)) {
+        close();
+        return OpenResult::Broken;
+      }
+    }
+  }
   return OpenResult::Ok;
 }
 
 void BookReader::close() {
   open_ = false;
+  firstSpine_ = 0;
   impl_->pagesOpen = false;
   spine_ = spineCount_ = 0;
   page_ = chapterPages_ = 0;
@@ -159,6 +201,7 @@ bool BookReader::openChapter(uint16_t spine) {
   m.indexArena.reset();
   m.scratch.reset();
 
+  trace("bolum", spine);
   char name[64];
   if (!pageCacheName(spine, m.generation, name, sizeof name)) return false;
   if (m.pages.open(*m.cache, name, m.generation, m.indexArena) != BookStatus::Ok) {
@@ -192,7 +235,8 @@ bool BookReader::openChapter(uint16_t spine) {
 
 bool BookReader::seek(const Position& pos) {
   if (!open_) return false;
-  const uint16_t spine = pos.spine < spineCount_ ? pos.spine : 0;
+  uint16_t spine = pos.spine < spineCount_ ? pos.spine : firstSpine_;
+  if (spine < firstSpine_) spine = firstSpine_;
   if (spine != spine_ || !impl_->pagesOpen) {
     if (!openChapter(spine)) return false;
   }
@@ -228,15 +272,16 @@ bool BookReader::prevPage() {
     --page_;
     return true;
   }
-  for (int s = static_cast<int>(spine_) - 1; s >= 0; --s) {
+  for (int s = static_cast<int>(spine_) - 1; s >= static_cast<int>(firstSpine_); --s) {
     if (!openChapter(static_cast<uint16_t>(s))) return false;
     if (chapterPages_ > 0) {
       page_ = chapterPages_ - 1;
       return true;
     }
   }
-  // Nothing before: reopen the first chapter at page 0.
-  openChapter(0);
+  // Nothing before: back to the first page of the first chapter.
+  if (spine_ != firstSpine_) openChapter(firstSpine_);
+  page_ = 0;
   return false;
 }
 
@@ -246,10 +291,26 @@ bool BookReader::render(uint8_t* fb) {
   if (!open_ || !m.pagesOpen || chapterPages_ == 0) return false;
   m.scratch.reset();
   Page page{};
+  trace("sayfa", static_cast<int>(page_));
   if (m.pages.readPage(page_, m.scratch, &page) != BookStatus::Ok) return false;
   FrameTarget target{fb, kPageH, kPageW, kPageH / 8, FrameFormat::Mono1Sharp, FrameRotation::Portrait};
   const ZipCatalog& zip = m.book.zip();
-  const BookStatus st = PageRenderer::render(page, m.fonts, *m.source, zip, m.scratch, target);
+  // Decode images only when they are small enough for the C3.
+  bool imagesOk = true;
+  for (uint16_t i = 0; i < page.imageCount && !m.isText; ++i) {
+    const ZipEntry* e = zip.find(page.images[i].href);
+    if (e == nullptr || e->uncompressedSize > kMaxImageBytes) imagesOk = false;
+  }
+  BookStatus st = BookStatus::Ok;
+  if (imagesOk) {
+    st = PageRenderer::render(page, m.fonts, *m.source, zip, m.scratch, target);
+  } else {
+    PageRenderer::renderText(page, m.fonts, target);
+    for (uint16_t i = 0; i < page.imageCount; ++i) {
+      const PageImage& im = page.images[i];
+      placeholder(fb, im.x, im.y, static_cast<int16_t>(im.width), static_cast<int16_t>(im.height));
+    }
+  }
   m.scratch.reset();
   return st == BookStatus::Ok;
 }

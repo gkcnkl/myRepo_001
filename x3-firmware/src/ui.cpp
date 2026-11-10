@@ -626,16 +626,17 @@ void drawLibrary(Adafruit_GFX& g, const App& app) {
     char line[160];
     char stamp[24];
     formatStamp(b.started, stamp, sizeof stamp);
-    if (b.finished) snprintf(line, sizeof line, "%s%sbitti", b.author, b.author[0] ? " · " : "");
+    if (app.libStatus[0]) snprintf(line, sizeof line, "%s", app.libStatus);  // e.g. why it did not open
+    else if (b.finished) snprintf(line, sizeof line, "%s%sbitti", b.author, b.author[0] ? " · " : "");
     else if (b.lastRead) snprintf(line, sizeof line, "%s%s%%%u · başladı %s", b.author, b.author[0] ? " · " : "", b.percent, stamp);
     else snprintf(line, sizeof line, "%s%shenüz açılmadı", b.author, b.author[0] ? " · " : "");
-    text(g, &Inter14, line, kM, dy + 66, kW - 2 * kM);
+    text(g, app.libStatus[0] ? &InterMed18 : &Inter14, line, kM, dy + 68, kW - 2 * kM);
   } else {
     sectionHeading(g, "Kitap ekle", dy + 10);
     text(g, &Inter14, "TAMAM: Wi-Fi'ı açar; telefondan EPUB ya da TXT yükle.", kM, dy + 40, kW - 2 * kM);
     if (lib.count == 0) text(g, &Inter14, "Raflar şimdilik boş.", kM, dy + 60, kW - 2 * kM);
   }
-  if (app.libStatus[0]) label(g, app.libStatus, kW - kM, dy + 10, 2);
+  if (app.libStatus[0] && app.libSelected >= lib.count) text(g, &InterMed18, app.libStatus, kM, dy + 84, kW - 2 * kM);
 
   char left[24];
   snprintf(left, sizeof left, "%d kitap", lib.count);
