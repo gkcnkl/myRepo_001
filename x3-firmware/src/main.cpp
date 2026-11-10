@@ -101,7 +101,7 @@ void setup() {
   epd.begin();
   epd.requestResync();
 
-  screen.setRotation(1);  // portrait, 528x792
+  screen.setRotation(3);  // portrait, 528x792 (3 = upright on real X3; 1 was upside down)
   drawFrame("-");
   epd.displayBuffer(EInkDisplay::FULL_REFRESH);
   Serial.println("[x3] first frame done");

@@ -11,10 +11,10 @@ Repoya dahil değil, derlemeden önce bu klasöre klonlanır.
 
 ## Hazır imajı yükleme (Windows)
 
-`release/x3-merhaba-v0.1.bin` dosyasını esptool klasörüne kopyala, sonra:
+`release/x3-merhaba-v0.2.bin` dosyasını esptool klasörüne kopyala, sonra:
 
 ```bash
-esptool --port COM14 --baud 921600 write-flash 0 x3-merhaba-v0.1.bin
+esptool --port COM14 --baud 921600 write-flash 0 x3-merhaba-v0.2.bin
 ```
 
 ## Ekran önizlemesi (cihazsız)
