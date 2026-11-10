@@ -23,7 +23,7 @@ constexpr int16_t kFooterH = 40;  // status line drawn by the UI under the text
 // is 111 KB and the rest is scattered over smaller regions. So the two big
 // layout arenas share one block, and the small ones have a preferred and a
 // minimum size: the caller tries the preferred size, then steps down.
-constexpr size_t kScratchArena = 56 * 1024;    // layout + page render (measured peak ~52 KB)
+constexpr size_t kScratchArena = 58 * 1024;    // layout + page render (measured peak ~55.5 KB on a 64-bit PC)
 constexpr size_t kParseArena = 50 * 1024;      // inflate window + XML parse (measured peak ~46 KB)
 constexpr size_t kBigBlock = kScratchArena + kParseArena;  // one allocation, split in two
 

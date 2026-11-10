@@ -65,7 +65,7 @@ constexpr uint16_t kBodySizePx = 21;
 constexpr int16_t kMarginX = 30;
 constexpr int16_t kMarginTop = 30;
 // Bump when anything that changes page layout changes (fonts, metrics).
-constexpr uint32_t kFontFingerprint = 0x4C495431u /* "LIT1" */ ^ (kBodySizePx << 8);
+constexpr uint32_t kFontFingerprint = 0x4C495432u /* "LIT2": bump on any layout change (fonts, run caps) */ ^ (kBodySizePx << 8);
 constexpr uint32_t kSyntheticBold = 0x80000000u;  // fingerprint bit: no real bold face
 
 TraceFn gTrace = nullptr;

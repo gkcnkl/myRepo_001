@@ -126,6 +126,15 @@ int main(int argc, char** argv) {
   printf("open: %d  title=\"%s\" author=\"%s\" lang=%s chapters=%u pages(ch0)=%u\n", static_cast<int>(res), r.title(),
          r.author(), r.language(), r.chapterCount(), r.chapterPages());
   if (res != reader::OpenResult::Ok) return 1;
+  // Negative page count: lay out every chapter without drawing, to measure the
+  // layout arenas alone (drawing borrows the scratch tail for the rasterizer).
+  const bool layoutOnly = pages < 0;
+  if (layoutOnly) {
+    uint32_t n = 1, maxRuns = 0;
+    while (r.nextPage()) ++n;
+    printf("laid out %u pages\n", n);
+    (void)maxRuns;
+  }
   for (int i = 0; i < pages; ++i) {
     if (!r.render(fb)) printf("render failed at page %u\n", r.page());
     ui::drawReaderFooter(canvas, r.chapterTitle(), r.percent(), r.page() + 1, r.chapterPages(), r.isTurkish());

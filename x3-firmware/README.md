@@ -105,10 +105,10 @@ biçim anlaşılmamıştır (`2026-11-10 15:30` biçimi de kabul edilir).
 
 ## Hazır imajı yükleme (Windows)
 
-`release/x3-bugun-v0.9.7.bin` dosyasını esptool klasörüne kopyala, sonra:
+`release/x3-bugun-v0.9.8.bin` dosyasını esptool klasörüne kopyala, sonra:
 
 ```bash
-esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.9.7.bin
+esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.9.8.bin
 ```
 
 ## Fabrika firmware'ine dönüş
@@ -127,6 +127,11 @@ git clone https://github.com/Free-Ink/freeink-sdk.git freeink-sdk
 git -C freeink-sdk checkout 5095ddddb301f92d40dcb884db8fb436446022ea
 pio run -e x3
 ```
+
+Derleme öncesi `tools/patch_sdk.py` SDK'da tek bir satırı ayarlanabilir yapar
+(Small profilin sayfa başına 304 metin parçası sınırı; iki yana yaslı 21 px
+sayfa ~400 ister, `FREEINK_BOOK_MAX_RUNS_PER_PAGE=448`). Betik tekrar
+çalıştırılabilir; SDK sürümü değişirse durur.
 
 - `src/app.cpp` — ekran durumları ve tuş mantığı (donanımdan bağımsız)
 - `src/tasks.cpp` — `brifing.txt` okuma/yazma
