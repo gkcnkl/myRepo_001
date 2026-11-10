@@ -94,13 +94,17 @@ void saveTasks() {
   if (!SdMan.writeFile(kTasksPath, String(buf))) Serial.println("[x3] save failed");
 }
 
-void render(bool screenChange) {
+// screenChange -> HALF refresh; firstFrame -> FULL refresh (clears all ghosting).
+void render(bool screenChange, bool firstFrame = false) {
   switch (app.screen) {
     case Screen::List: ui::drawList(screen, app, false); break;
     case Screen::Focus: ui::drawFocus(screen, app, millis()); break;
     case Screen::FocusDone: ui::drawFocusDone(screen, app); break;
   }
-  if (screenChange || ++fastRefreshes >= kFastRefreshesBeforeFull) {
+  if (firstFrame) {
+    fastRefreshes = 0;
+    epd.displayBuffer(EInkDisplay::FULL_REFRESH);
+  } else if (screenChange || ++fastRefreshes >= kFastRefreshesBeforeFull) {
     fastRefreshes = 0;
     epd.displayBuffer(EInkDisplay::HALF_REFRESH);
   } else {
@@ -111,7 +115,8 @@ void render(bool screenChange) {
 [[noreturn]] void goToSleep() {
   Serial.println("[x3] sleep");
   ui::drawList(screen, app, true);
-  epd.displayBuffer(EInkDisplay::HALF_REFRESH);
+  // FULL refresh: this image stays on the panel while off, so leave no ghosts.
+  epd.displayBuffer(EInkDisplay::FULL_REFRESH);
   epd.deepSleep();
   SdMan.shutdown();
   // Same order as CrossPoint: cut the battery path (no-op on USB power), then
@@ -159,7 +164,7 @@ void setup() {
 
   loadTasks();
   app.lastInputMs = millis();
-  render(true);
+  render(true, /*firstFrame=*/true);
 }
 
 void loop() {

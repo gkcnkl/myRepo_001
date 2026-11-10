@@ -35,10 +35,10 @@ Kitaptan bir bölüm oku
 
 ## Hazır imajı yükleme (Windows)
 
-`release/x3-bugun-v0.3.bin` dosyasını esptool klasörüne kopyala, sonra:
+`release/x3-bugun-v0.4.bin` dosyasını esptool klasörüne kopyala, sonra:
 
 ```bash
-esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.3.bin
+esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.4.bin
 ```
 
 ## Fabrika firmware'ine dönüş
