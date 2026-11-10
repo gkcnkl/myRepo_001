@@ -21,16 +21,17 @@ constexpr int16_t kFooterH = 40;  // status line drawn by the UI under the text
 
 // Working memory: one buffer per arena, allocated separately by the caller so
 // a fragmented heap still fits them (no PSRAM on the X3).
-constexpr size_t kBookArena = 24 * 1024;       // ZIP catalog, OPF, spine, TOC (Dubliners: 7.5 KB)
+constexpr size_t kBookArena = 16 * 1024;       // ZIP catalog, OPF, spine, TOC (Dubliners: 7.5 KB)
 // Layout working set split in two so no single block is ~110 KB (the heap
 // is fragmented once Wi-Fi, the display and the SD card are up).
 constexpr size_t kScratchArena = 56 * 1024;    // layout + page render (measured peak ~52 KB)
 constexpr size_t kParseArena = 50 * 1024;      // inflate window + XML parse (measured peak ~46 KB)
-constexpr size_t kGlyphArena = 16 * 1024;      // rasterized glyph cache, regular face (flushes when full)
-constexpr size_t kBoldGlyphArena = 12 * 1024;  // bold face (headings); each face flushes its own arena
-// Each face also reserves ~7 KB of fixed tables (FREEINK_FONT_ADVANCE_SLOTS=256 in the build).
-constexpr size_t kIndexArena = 12 * 1024;      // open chapter's page index (~8 B/page: ~1500 pages)
-constexpr size_t kSheetArena = 4 * 1024;       // book CSS (oversized sheets are skipped)
+constexpr size_t kGlyphArena = 12 * 1024;      // rasterized glyph cache, regular face (flushes when full)
+constexpr size_t kBoldGlyphArena = 8 * 1024;   // bold face (headings); each face flushes its own arena
+// Each face also reserves ~5 KB of fixed tables (FREEINK_FONT_ADVANCE_SLOTS=256,
+// FREEINK_FONT_GLYPH_SLOTS=64 in the build).
+constexpr size_t kIndexArena = 6 * 1024;       // open chapter's page index (~8 B/page: ~750 pages)
+constexpr size_t kSheetArena = 2 * 1024;       // book CSS (oversized sheets are skipped)
 
 struct Memory {
   uint8_t* book;     // kBookArena bytes

@@ -19,9 +19,11 @@
 
 ## Bellek (PSRAM yok)
 
-Okuyucu bir kitap açılınca yedi ayrı blok ayırır ve kapanınca bırakır:
-sayfalama 56 KB, ayrıştırma (sıkıştırma + XML) 50 KB, katalog 24 KB, fontlar
-16 + 12 KB, sayfa dizini 12 KB, CSS 4 KB; toplam ~174 KB, en büyük blok 56 KB.
+Cihazda ölçülen: okuyucu açılmadan önce boş heap 157 KB, en büyük blok 111 KB
+(v0.9.2, 20 KB loop yığınıyla). Okuyucu bir kitap açılınca yedi ayrı blok
+ayırır ve kapanınca bırakır: sayfalama 56 KB, ayrıştırma (sıkıştırma + XML)
+50 KB, katalog 16 KB, fontlar 12 + 8 KB, sayfa dizini 6 KB, CSS 2 KB; toplam
+~150 KB, en büyük blok 56 KB. Loop yığını 16 KB.
 Ölçülen tepe değerler (Dubliners, 290 sayfa): sayfalama 52 KB, ayrıştırma 46 KB.
-Wi-Fi'dan çıkınca cihaz kendini yeniden başlatır (aynı ekrana döner); böylece
-okuyucu parçalanmamış bir heap bulur. Yetmezse rafta boş ve en büyük blok yazar.
+Sınırlar: bölüm başına ~750 sayfa (dizin), ~16 KB katalog (çok bölümlü dev
+kitaplar "çok büyük" der). Wi-Fi'dan çıkınca cihaz kendini yeniden başlatır.

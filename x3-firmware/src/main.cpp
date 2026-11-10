@@ -33,7 +33,7 @@
 
 // The reading engine (expat, stb_truetype, JPEG/PNG decode) needs more than
 // Arduino's default 8 KB loop stack, as CrossPoint found on the same chip.
-SET_LOOP_TASK_STACK_SIZE(20 * 1024);
+SET_LOOP_TASK_STACK_SIZE(16 * 1024);
 
 namespace {
 
