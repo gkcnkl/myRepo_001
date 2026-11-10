@@ -292,33 +292,69 @@ void scanLibrary() {
 }
 
 void freeReaderMemory() {
-  uint8_t** bufs[] = {&readerMem.book, &readerMem.scratch, &readerMem.parse, &readerMem.glyph,
-                      &readerMem.bold, &readerMem.index,   &readerMem.sheet};
+  uint8_t** bufs[] = {&readerMem.big, &readerMem.book, &readerMem.glyph, &readerMem.bold, &readerMem.index, &readerMem.sheet};
   for (uint8_t** b : bufs) {
     free(*b);
     *b = nullptr;
   }
+  readerMem = reader::Memory{};
 }
 
-char memoryNote[48] = "";  // "boş 143 KB, en büyük 61 KB" when allocation failed
+char memoryNote[64] = "";  // what did not fit, shown on the shelf
+
+// Tries `spec.preferred`, then smaller steps down to `spec.minimum`.
+uint8_t* allocStepDown(const reader::ArenaSpec& spec, size_t& got) {
+  for (size_t size = spec.preferred; size >= spec.minimum; size -= 1024) {
+    auto* p = static_cast<uint8_t*>(heap_caps_malloc(size, MALLOC_CAP_8BIT));
+    if (p != nullptr) {
+      got = size;
+      return p;
+    }
+    if (size < spec.minimum + 1024) break;
+  }
+  got = 0;
+  return nullptr;
+}
 
 bool allocReaderMemory() {
-  const size_t sizes[] = {reader::kScratchArena, reader::kParseArena,      reader::kBookArena, reader::kGlyphArena,
-                          reader::kBoldGlyphArena, reader::kIndexArena, reader::kSheetArena};
-  uint8_t** bufs[] = {&readerMem.scratch, &readerMem.parse, &readerMem.book, &readerMem.glyph,
-                      &readerMem.bold,    &readerMem.index, &readerMem.sheet};
   const unsigned freeKb = heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024;
   const unsigned largestKb = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024;
   Serial.printf("[x3] reader alloc: heap free %u KB, largest block %u KB\n", freeKb, largestKb);
-  for (int i = 0; i < 7; ++i) {  // largest first, while the heap is least fragmented
-    *bufs[i] = static_cast<uint8_t*>(heap_caps_malloc(sizes[i], MALLOC_CAP_8BIT));
-    if (*bufs[i] == nullptr) {
-      snprintf(memoryNote, sizeof memoryNote, "boş %u KB, en büyük %u KB", freeKb, largestKb);
-      Serial.printf("[x3] reader: no memory for %u B\n", static_cast<unsigned>(sizes[i]));
+  // The two layout arenas share the largest block (measured: 111 KB).
+  readerMem.big = static_cast<uint8_t*>(heap_caps_malloc(reader::kBigBlock, MALLOC_CAP_8BIT));
+  if (readerMem.big == nullptr) {
+    snprintf(memoryNote, sizeof memoryNote, "%u KB blok yok (en büyük %u KB)",
+             static_cast<unsigned>(reader::kBigBlock / 1024), largestKb);
+    return false;
+  }
+  // Small arenas, largest first, each stepping down if the heap is tight.
+  struct Item {
+    const char* name;
+    const reader::ArenaSpec* spec;
+    uint8_t** ptr;
+    size_t* size;
+  } items[] = {
+      {"katalog", &reader::kBookArena, &readerMem.book, &readerMem.bookSize},
+      {"font", &reader::kGlyphArena, &readerMem.glyph, &readerMem.glyphSize},
+      {"kalın font", &reader::kBoldGlyphArena, &readerMem.bold, &readerMem.boldSize},
+      {"dizin", &reader::kIndexArena, &readerMem.index, &readerMem.indexSize},
+      {"css", &reader::kSheetArena, &readerMem.sheet, &readerMem.sheetSize},
+  };
+  for (Item& it : items) {
+    *it.ptr = allocStepDown(*it.spec, *it.size);
+    if (*it.ptr == nullptr) {
+      snprintf(memoryNote, sizeof memoryNote, "%s için %u KB yok (en büyük %u KB)", it.name,
+               static_cast<unsigned>(it.spec->minimum / 1024),
+               static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024));
       freeReaderMemory();
       return false;
     }
   }
+  Serial.printf("[x3] reader arenas: book %u, glyph %u, bold %u, index %u, css %u; heap left %u KB\n",
+                static_cast<unsigned>(readerMem.bookSize), static_cast<unsigned>(readerMem.glyphSize),
+                static_cast<unsigned>(readerMem.boldSize), static_cast<unsigned>(readerMem.indexSize),
+                static_cast<unsigned>(readerMem.sheetSize),
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024));
   return true;
 }
 
@@ -399,7 +435,7 @@ bool openSelectedBook() {
     bookCache.closeAll();
     freeReaderMemory();
     if (strcmp(error, "Bellek yetmedi") == 0) {
-      snprintf(app.libStatus, sizeof app.libStatus, "Bellek yetmedi · %s", memoryNote);
+      snprintf(app.libStatus, sizeof app.libStatus, "Bellek: %s", memoryNote);
     } else {
       snprintf(app.libStatus, sizeof app.libStatus, "%s", error);
     }

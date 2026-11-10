@@ -99,16 +99,18 @@ int main(int argc, char** argv) {
   DirCache cache(argv[2]);
   mkdir(argv[3], 0755);
   const bool isText = strstr(argv[1], ".txt") != nullptr;
-  std::vector<uint8_t> b(reader::kBookArena), sc(reader::kScratchArena), pa(reader::kParseArena),
-      gl(reader::kGlyphArena), bo(reader::kBoldGlyphArena), ix(reader::kIndexArena), sh(reader::kSheetArena);
-  reader::Memory mem{};
-  mem.book = b.data();
-  mem.scratch = sc.data();
-  mem.parse = pa.data();
-  mem.glyph = gl.data();
-  mem.bold = bo.data();
-  mem.index = ix.data();
-  mem.sheet = sh.data();
+  // Same arenas as the device; "min" as 5th argument uses every minimum size.
+  const bool useMin = argc > 5 && strcmp(argv[5], "min") == 0;
+  auto pick = [useMin](const reader::ArenaSpec& a) { return useMin ? a.minimum : a.preferred; };
+  std::vector<uint8_t> big(reader::kBigBlock), b(pick(reader::kBookArena)), gl(pick(reader::kGlyphArena)),
+      bo(pick(reader::kBoldGlyphArena)), ix(pick(reader::kIndexArena)), sh(pick(reader::kSheetArena));
+  reader::Memory mem;
+  mem.big = big.data();
+  mem.book = b.data(), mem.bookSize = b.size();
+  mem.glyph = gl.data(), mem.glyphSize = gl.size();
+  mem.bold = bo.data(), mem.boldSize = bo.size();
+  mem.index = ix.data(), mem.indexSize = ix.size();
+  mem.sheet = sh.data(), mem.sheetSize = sh.size();
   Canvas canvas;
   reader::BookReader r;
   const reader::OpenResult res = r.open(src, cache, isText, mem);
@@ -127,11 +129,11 @@ int main(int argc, char** argv) {
   }
   const reader::Position pos = r.position();
   printf("position: spine %u char %u\n", pos.spine, pos.charOffset);
-  size_t hw[7];
-  r.memoryReport(hw);
-  printf("parse %zu / %zu\n", hw[6], reader::kParseArena);
-  printf("high water: book %zu / %zu, scratch %zu / %zu, glyph %zu / %zu, bold %zu / %zu, index %zu / %zu, css %zu / %zu\n",
-         hw[0], reader::kBookArena, hw[1], reader::kScratchArena, hw[2], reader::kGlyphArena, hw[3],
-         reader::kBoldGlyphArena, hw[4], reader::kIndexArena, hw[5], reader::kSheetArena);
+  size_t hw[7], cap[7];
+  r.memoryReport(hw, cap);
+  const char* names[7] = {"book", "scratch", "glyph", "bold", "index", "css", "parse"};
+  printf("high water:");
+  for (int i = 0; i < 7; ++i) printf(" %s %zu/%zu", names[i], hw[i], cap[i]);
+  printf("\n");
   return 0;
 }

@@ -19,28 +19,37 @@ constexpr int16_t kPageW = 528;
 constexpr int16_t kPageH = 792;
 constexpr int16_t kFooterH = 40;  // status line drawn by the UI under the text
 
-// Working memory: one buffer per arena, allocated separately by the caller so
-// a fragmented heap still fits them (no PSRAM on the X3).
-constexpr size_t kBookArena = 16 * 1024;       // ZIP catalog, OPF, spine, TOC (Dubliners: 7.5 KB)
-// Layout working set split in two so no single block is ~110 KB (the heap
-// is fragmented once Wi-Fi, the display and the SD card are up).
+// Working memory. Measured on the device: ~161 KB free, but the largest block
+// is 111 KB and the rest is scattered over smaller regions. So the two big
+// layout arenas share one block, and the small ones have a preferred and a
+// minimum size: the caller tries the preferred size, then steps down.
 constexpr size_t kScratchArena = 56 * 1024;    // layout + page render (measured peak ~52 KB)
 constexpr size_t kParseArena = 50 * 1024;      // inflate window + XML parse (measured peak ~46 KB)
-constexpr size_t kGlyphArena = 12 * 1024;      // rasterized glyph cache, regular face (flushes when full)
-constexpr size_t kBoldGlyphArena = 8 * 1024;   // bold face (headings); each face flushes its own arena
-// Each face also reserves ~5 KB of fixed tables (FREEINK_FONT_ADVANCE_SLOTS=256,
-// FREEINK_FONT_GLYPH_SLOTS=64 in the build).
-constexpr size_t kIndexArena = 6 * 1024;       // open chapter's page index (~8 B/page: ~750 pages)
-constexpr size_t kSheetArena = 2 * 1024;       // book CSS (oversized sheets are skipped)
+constexpr size_t kBigBlock = kScratchArena + kParseArena;  // one allocation, split in two
+
+struct ArenaSpec {
+  size_t preferred;
+  size_t minimum;
+};
+// ZIP catalog, OPF, spine, TOC (Dubliners: 7.5 KB).
+constexpr ArenaSpec kBookArena{16 * 1024, 9 * 1024};
+// Glyph caches: ~5 KB of fixed tables per face (FREEINK_FONT_ADVANCE_SLOTS=256,
+// FREEINK_FONT_GLYPH_SLOTS=64 in the build), the rest caches bitmaps and
+// flushes when full.
+constexpr ArenaSpec kGlyphArena{12 * 1024, 7 * 1024};
+constexpr ArenaSpec kBoldGlyphArena{8 * 1024, 6 * 1024};
+// Open chapter's page index, ~8 B/page: 6 KB ~750 pages, 3 KB ~380 pages.
+constexpr ArenaSpec kIndexArena{6 * 1024, 3 * 1024};
+constexpr ArenaSpec kSheetArena{2 * 1024, 512};  // book CSS (oversized sheets are skipped)
 
 struct Memory {
-  uint8_t* book;     // kBookArena bytes
-  uint8_t* scratch;  // kScratchArena
-  uint8_t* parse;    // kParseArena
-  uint8_t* glyph;    // kGlyphArena
-  uint8_t* bold;     // kBoldGlyphArena
-  uint8_t* index;    // kIndexArena
-  uint8_t* sheet;    // kSheetArena
+  uint8_t* big = nullptr;  // kBigBlock bytes: scratch then parse
+  uint8_t* book = nullptr;
+  uint8_t* glyph = nullptr;
+  uint8_t* bold = nullptr;
+  uint8_t* index = nullptr;
+  uint8_t* sheet = nullptr;
+  size_t bookSize = 0, glyphSize = 0, boldSize = 0, indexSize = 0, sheetSize = 0;
 };
 
 enum class OpenResult : uint8_t { Ok, NotFound, Encrypted, TooBig, Broken };
@@ -98,8 +107,9 @@ class BookReader {
   // Language of the current chapter's text (xml:lang of the book or "tr").
   bool isTurkish() const;
 
-  // Arena high-water marks in bytes: book, scratch, glyph, bold glyph, index, sheet, parse.
-  void memoryReport(size_t out[7]) const;
+  // Arena high-water marks and capacities in bytes: book, scratch, glyph,
+  // bold glyph, index, sheet, parse.
+  void memoryReport(size_t out[7], size_t cap[7]) const;
 
   struct Impl;  // engine state, defined in book_reader.cpp
 

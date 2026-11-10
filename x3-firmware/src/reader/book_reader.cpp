@@ -100,13 +100,13 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
   m.cache = &cache;
   m.isText = isText;
 
-  m.bookArena.init(mem.book, kBookArena);
-  m.scratch.init(mem.scratch, kScratchArena);
-  m.parse.init(mem.parse, kParseArena);
-  m.glyphArena.init(mem.glyph, kGlyphArena);
-  m.boldGlyphArena.init(mem.bold, kBoldGlyphArena);
-  m.indexArena.init(mem.index, kIndexArena);
-  m.sheetArena.init(mem.sheet, kSheetArena);
+  m.scratch.init(mem.big, kScratchArena);
+  m.parse.init(mem.big + kScratchArena, kParseArena);
+  m.bookArena.init(mem.book, mem.bookSize);
+  m.glyphArena.init(mem.glyph, mem.glyphSize);
+  m.boldGlyphArena.init(mem.bold, mem.boldSize);
+  m.indexArena.init(mem.index, mem.indexSize);
+  m.sheetArena.init(mem.sheet, mem.sheetSize);
 
   const char* lang = "tr";
   if (!isText) {
@@ -319,7 +319,7 @@ bool BookReader::render(uint8_t* fb) {
   return st == BookStatus::Ok;
 }
 
-void BookReader::memoryReport(size_t out[7]) const {
+void BookReader::memoryReport(size_t out[7], size_t cap[7]) const {
   const Impl& m = *impl_;
   out[0] = m.bookArena.highWater();
   out[1] = m.scratch.highWater();
@@ -328,6 +328,8 @@ void BookReader::memoryReport(size_t out[7]) const {
   out[4] = m.indexArena.highWater();
   out[5] = m.sheetArena.highWater();
   out[6] = m.parse.highWater();
+  const Arena* all[7] = {&m.bookArena, &m.scratch, &m.glyphArena, &m.boldGlyphArena, &m.indexArena, &m.sheetArena, &m.parse};
+  for (int i = 0; i < 7; ++i) cap[i] = all[i]->capacity();
 }
 
 uint8_t BookReader::percent() const {
