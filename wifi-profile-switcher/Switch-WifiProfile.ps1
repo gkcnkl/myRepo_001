@@ -26,18 +26,24 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = (Join-Path $PSScriptRoot 'config.json'),
+    [string]$ConfigPath,
     [switch]$DryRun,
     [switch]$Status
 )
 
 Set-StrictMode -Version 2.0
+
+# Betiğin bulunduğu klasör. Windows PowerShell 5.1'de $PSScriptRoot bazen boş gelir; yedek yollar dene.
+$ScriptDir = $PSScriptRoot
+if (-not $ScriptDir -and $MyInvocation.MyCommand.Path) { $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $ScriptDir) { $ScriptDir = (Get-Location).Path }
+if (-not $ConfigPath) { $ConfigPath = Join-Path $ScriptDir 'config.json' }
 $ErrorActionPreference = 'Stop'
 
 # ---------------------------------------------------------------------------
 # Günlük
 # ---------------------------------------------------------------------------
-$script:LogPath = Join-Path $PSScriptRoot 'switcher.log'
+$script:LogPath = Join-Path $ScriptDir 'switcher.log'
 
 function Write-Log {
     param([string]$Message, [string]$Level = 'INFO')

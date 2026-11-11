@@ -9,6 +9,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Betiğin bulunduğu klasör. Windows PowerShell 5.1'de $PSScriptRoot bazen boş gelir; yedek yollar dene.
+$ScriptDir = $PSScriptRoot
+if (-not $ScriptDir -and $MyInvocation.MyCommand.Path) { $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $ScriptDir) { $ScriptDir = (Get-Location).Path }
 $TaskName = 'WifiProfileSwitcher'
 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
@@ -16,12 +21,12 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 if (-not $isAdmin) { throw 'Bu betiği "Yönetici olarak" açılmış bir PowerShell penceresinde çalıştırın.' }
 
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-Copy-Item (Join-Path $PSScriptRoot 'Switch-WifiProfile.ps1') $InstallDir -Force
+Copy-Item (Join-Path $ScriptDir 'Switch-WifiProfile.ps1') $InstallDir -Force
 
 $configTarget = Join-Path $InstallDir 'config.json'
 if (-not (Test-Path $configTarget)) {
-    $src = Join-Path $PSScriptRoot 'config.json'
-    if (-not (Test-Path $src)) { $src = Join-Path $PSScriptRoot 'config.example.json' }
+    $src = Join-Path $ScriptDir 'config.json'
+    if (-not (Test-Path $src)) { $src = Join-Path $ScriptDir 'config.example.json' }
     Copy-Item $src $configTarget
     Write-Host "Yapılandırma kopyalandı: $configTarget  (kendi ağlarınıza göre düzenleyin)" -ForegroundColor Yellow
 } else {
@@ -32,7 +37,7 @@ if (-not (Test-Path $configTarget)) {
 & icacls.exe $InstallDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' | Out-Null
 
 $script = Join-Path $InstallDir 'Switch-WifiProfile.ps1'
-$args_  = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`""
+$args_  = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`" -ConfigPath `"$configTarget`""
 
 # Tetikleyiciler:
 #  - WLAN-AutoConfig olay 8001: "Kablosuz ağa başarıyla bağlanıldı"
