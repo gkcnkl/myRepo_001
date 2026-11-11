@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <NetworkClientSecure.h>
 #include <Preferences.h>
+#include <SDCardManager.h>
 #include <WiFi.h>
 #include <time.h>
 
@@ -19,6 +20,14 @@ constexpr uint32_t kWifiTimeoutMs = 15000;
 constexpr uint32_t kNtpTimeoutMs = 6000;
 constexpr long kTurkeyOffsetSec = 3 * 3600;  // UTC+3 all year
 constexpr size_t kMaxFile = 8192;
+constexpr const char* kBooksDir = "/kitaplar";
+constexpr const char* kStateDir = "/kitaplar/.x3";
+constexpr const char* kManifestPath = "/kitaplar/.x3/esitlenen.txt";
+constexpr const char* kDownloadTmp = "/kitaplar/.x3/indirme.tmp";
+constexpr int kMaxRemoteBooks = 30;
+constexpr int kMaxDownloadsPerSync = 5;
+constexpr uint32_t kMaxBookBytes = 8u * 1024 * 1024;
+constexpr size_t kMaxListing = 40 * 1024;
 
 uint32_t hashText(const char* s) {
   uint32_t h = 2166136261u;
@@ -30,24 +39,33 @@ void stamp(char* out, size_t n, const LocalTime& t) {
   snprintf(out, n, "%04u-%02u-%02u %02u:%02u", t.year, t.month, t.day, t.hour, t.minute);
 }
 
-// One HTTPS request to the contents API. Returns the HTTP status (negative on
-// a connection error) and the body in `body`.
-int github(const SyncSettings& s, const char* method, const char* path, const char* accept, const char* payload,
-           String& body) {
-  NetworkClientSecure client;
+// Opens a contents-API request for `path` (percent-encoded here).
+bool beginGithub(HTTPClient& http, NetworkClientSecure& client, const SyncSettings& s, bool get, const char* path,
+                 const char* accept) {
   client.setCACert(kGithubRootCAs);  // verify api.github.com: the token stays private
   client.setTimeout(15);
-  HTTPClient http;
-  char url[200];
-  snprintf(url, sizeof url, "https://api.github.com/repos/%s/contents/%s%s%s", s.repo, path,
-           strcmp(method, "GET") == 0 ? "?ref=" : "", strcmp(method, "GET") == 0 ? s.branch : "");
-  if (!http.begin(client, url)) return -1;
+  char encoded[300];
+  if (!urlEncodePath(path, encoded, sizeof encoded)) return false;
+  char url[420];
+  snprintf(url, sizeof url, "https://api.github.com/repos/%s/contents/%s%s%s", s.repo, encoded, get ? "?ref=" : "",
+           get ? s.branch : "");
+  if (!http.begin(client, url)) return false;
   char auth[160];
   snprintf(auth, sizeof auth, "Bearer %s", s.token);
   http.addHeader("Authorization", auth);
   http.addHeader("Accept", accept);
   http.addHeader("User-Agent", "x3-bugun");
   http.addHeader("X-GitHub-Api-Version", "2022-11-28");
+  return true;
+}
+
+// One HTTPS request to the contents API. Returns the HTTP status (negative on
+// a connection error) and the body in `body`.
+int github(const SyncSettings& s, const char* method, const char* path, const char* accept, const char* payload,
+           String& body) {
+  NetworkClientSecure client;
+  HTTPClient http;
+  if (!beginGithub(http, client, s, strcmp(method, "GET") == 0, path, accept)) return -1;
   int code;
   if (strcmp(method, "PUT") == 0) {
     http.addHeader("Content-Type", "application/json");
@@ -66,6 +84,138 @@ const char* httpMessage(int code) {
   if (code == 404) return "Depo ya da dal bulunamadı";
   if (code < 0) return "GitHub'a bağlanılamadı";
   return "GitHub hatası";
+}
+
+// Streams one book from the repository to /kitaplar/<name> (through a temp
+// file, so a broken download never replaces a good book).
+bool downloadBook(const SyncSettings& s, const RemoteBook& r) {
+  char path[120];
+  snprintf(path, sizeof path, "kitaplar/%s", r.name);
+  NetworkClientSecure client;
+  HTTPClient http;
+  if (!beginGithub(http, client, s, true, path, "application/vnd.github.raw+json")) return false;
+  http.setTimeout(20000);
+  const int code = http.GET();
+  bool ok = false;
+  if (code == 200) {
+    SdMan.remove(kDownloadTmp);
+    FsFile f = SdMan.open(kDownloadTmp, O_WRONLY | O_CREAT | O_TRUNC);
+    if (f) {
+      const int expected = http.getSize();
+      const int written = http.writeToStream(&f);
+      f.close();
+      ok = written > 0 && (expected < 0 || written == expected) && (r.size == 0 || static_cast<uint32_t>(written) == r.size);
+    }
+    if (ok) {
+      char target[120];
+      snprintf(target, sizeof target, "%s/%s", kBooksDir, r.name);
+      SdMan.remove(target);
+      ok = SdMan.rename(kDownloadTmp, target);
+    }
+    if (!ok) SdMan.remove(kDownloadTmp);
+  }
+  http.end();
+  Serial.printf("[x3] book %s: http %d %s\n", r.name, code, ok ? "ok" : "failed");
+  return ok;
+}
+
+// Removes a book that came from the repository, with its state and page cache.
+void removeSyncedBook(const char* name) {
+  char path[120];
+  snprintf(path, sizeof path, "%s/%s", kBooksDir, name);
+  SdMan.remove(path);
+  BookInfo b;
+  if (bookFromFileName(name, 0, b)) {
+    snprintf(path, sizeof path, "%s/%s", kStateDir, b.id);
+    SdMan.removeDir(path);
+  }
+  Serial.printf("[x3] book %s removed (gone from the repository)\n", name);
+}
+
+// Mirrors the repository's kitaplar/ folder into /kitaplar: new or changed
+// books come down, books that came from the repository and are gone there
+// are removed. Books uploaded over Wi-Fi are never touched.
+struct BookSyncResult {
+  int added = 0;
+  int removed = 0;
+  int failed = 0;
+  bool listed = false;
+};
+
+BookSyncResult syncBooks(const SyncSettings& s) {
+  BookSyncResult res;
+  RemoteBook* remote = new (std::nothrow) RemoteBook[kMaxRemoteBooks];
+  if (remote == nullptr) return res;
+  int count = 0;
+  bool complete = false;  // the listing holds every book (safe to remove the rest)
+  {
+    String body;
+    const int code = github(s, "GET", "kitaplar", "application/vnd.github+json", nullptr, body);
+    if (code == 200 && body.length() > 0 && body.length() < kMaxListing) {
+      count = parseDirListing(body.c_str(), remote, kMaxRemoteBooks);
+      complete = count < kMaxRemoteBooks;
+      res.listed = true;
+    } else if (code == 404) {
+      complete = true;  // no kitaplar/ folder: no books from the repository
+      res.listed = true;
+    }
+    Serial.printf("[x3] kitaplar/: http %d, %d books\n", code, count);
+  }
+  if (!res.listed) {
+    delete[] remote;
+    return res;
+  }
+
+  SdMan.ensureDirectoryExists(kStateDir);
+  const String old = SdMan.readFile(kManifestPath);
+  String fresh;
+  int downloads = 0;
+  for (int i = 0; i < count; ++i) {
+    const RemoteBook& r = remote[i];
+    char oldSha[44] = "";
+    const bool known = manifestFind(old.c_str(), r.name, oldSha, sizeof oldSha);
+    char path[120];
+    snprintf(path, sizeof path, "%s/%s", kBooksDir, r.name);
+    const bool present = SdMan.exists(path);
+    if (known && present && strcmp(oldSha, r.sha) == 0) {
+      fresh += String(r.sha) + " " + r.name + "\n";
+      continue;
+    }
+    bool ok = false;
+    if (r.size <= kMaxBookBytes && downloads < kMaxDownloadsPerSync) {
+      ++downloads;
+      ok = downloadBook(s, r);
+    }
+    if (ok) {
+      ++res.added;
+      fresh += String(r.sha) + " " + r.name + "\n";
+    } else {
+      ++res.failed;
+      if (known) fresh += String(oldSha) + " " + r.name + "\n";  // still ours; retried next time
+    }
+  }
+  if (complete) {
+    const char* c = old.c_str();
+    char name[80], sha[44];
+    while (manifestNext(c, name, sizeof name, sha, sizeof sha)) {
+      bool inRepo = false;
+      for (int i = 0; i < count && !inRepo; ++i) inRepo = strcmp(remote[i].name, name) == 0;
+      if (!inRepo) {
+        removeSyncedBook(name);
+        ++res.removed;
+      }
+    }
+  } else {
+    // Partial listing: keep remembering books we could not see this time.
+    const char* c = old.c_str();
+    char name[80], sha[44];
+    while (manifestNext(c, name, sizeof name, sha, sizeof sha)) {
+      if (!manifestFind(fresh.c_str(), name, nullptr, 0)) fresh += String(sha) + " " + name + "\n";
+    }
+  }
+  if (fresh != old) SdMan.writeFile(kManifestPath, fresh);
+  delete[] remote;
+  return res;
 }
 
 }  // namespace
@@ -100,7 +250,7 @@ uint32_t lastSyncMinutes() {
   return v;
 }
 
-SyncOutcome runSync(const SyncSettings& s, TaskList& tasks, bool (*setClock)(const LocalTime&)) {
+SyncOutcome runSync(const SyncSettings& s, TaskList& tasks, const Library* lib, bool (*setClock)(const LocalTime&)) {
   SyncOutcome out;
   if (!s.configured()) {
     snprintf(out.message, sizeof out.message, "Eşitleme ayarlanmadı");
@@ -162,14 +312,23 @@ SyncOutcome runSync(const SyncSettings& s, TaskList& tasks, bool (*setClock)(con
   }
   body = String();
 
-  // 2) Push cihaz.txt when the device's view changed since the last push.
+  // 2) Books: mirror the repository's kitaplar/ folder (needs the SD card).
+  if (lib != nullptr) {
+    const BookSyncResult books = syncBooks(s);
+    out.booksAdded = books.added;
+    out.booksRemoved = books.removed;
+    out.booksFailed = books.failed;
+  }
+
+  // 3) Push cihaz.txt when the device's view changed since the last push.
   char* state = static_cast<char*>(malloc(kMaxFile));
   char* b64 = static_cast<char*>(malloc(kMaxFile * 4 / 3 + 8));
   char* put = static_cast<char*>(malloc(kMaxFile * 4 / 3 + 512));
   bool pushed = false;
   if (state != nullptr && b64 != nullptr && put != nullptr) {
-    tasks.serialize(state, kMaxFile);
-    const uint32_t h = hashText(state);
+    // The hash covers the briefing and the books' reading state (no stamp).
+    const size_t stateLen = buildDeviceStateFile(tasks, lib, "", state, kMaxFile);
+    const uint32_t h = stateLen > 0 ? hashText(state) : 0;
     Preferences p;
     p.begin(kNamespace, true);
     const uint32_t lastHash = p.getUInt("pushed", 0);
@@ -179,7 +338,7 @@ SyncOutcome runSync(const SyncSettings& s, TaskList& tasks, bool (*setClock)(con
     } else {
       char when[24] = "saat bilinmiyor";
       if (haveTime) stamp(when, sizeof when, now);
-      const size_t n = buildDeviceStateFile(tasks, when, state, kMaxFile);
+      const size_t n = buildDeviceStateFile(tasks, lib, when, state, kMaxFile);
       String meta;
       char sha[48] = "";
       const int metaCode = github(s, "GET", "cihaz.txt", "application/vnd.github+json", nullptr, meta);
@@ -214,14 +373,17 @@ SyncOutcome runSync(const SyncSettings& s, TaskList& tasks, bool (*setClock)(con
 
   if (pushed) {
     out.ok = true;
+    char extra[32] = "";
+    if (out.booksAdded > 0) snprintf(extra, sizeof extra, " · %d yeni kitap", out.booksAdded);
+    else if (out.booksFailed > 0) snprintf(extra, sizeof extra, " · %d kitap inmedi", out.booksFailed);
     if (haveTime) {
-      snprintf(out.message, sizeof out.message, "Eşitlendi %02u:%02u", now.hour, now.minute);
+      snprintf(out.message, sizeof out.message, "Eşitlendi %02u:%02u%s", now.hour, now.minute, extra);
       Preferences p;
       p.begin(kNamespace, false);
       p.putUInt("last", minutesSince2000(now));
       p.end();
     } else {
-      snprintf(out.message, sizeof out.message, "Eşitlendi");
+      snprintf(out.message, sizeof out.message, "Eşitlendi%s", extra);
     }
   }
   return out;

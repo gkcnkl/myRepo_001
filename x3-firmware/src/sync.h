@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "clock.h"
+#include "library.h"
 #include "tasks.h"
 
 struct SyncSettings {
@@ -30,9 +31,15 @@ struct SyncOutcome {
   bool ok = false;        // briefing pulled (or absent) and state pushed
   bool changed = false;   // `tasks` was replaced with the merged download
   bool clockSet = false;
+  int booksAdded = 0;     // downloaded from the repository's kitaplar/
+  int booksRemoved = 0;   // gone from the repository, removed here
+  int booksFailed = 0;
   char message[64] = "";  // short Turkish status for the screen
 };
 
-// Runs a full sync. `tasks` is the device's briefing (merged in place);
-// `setClock` writes the RTC. Leaves Wi-Fi off. Blocks for a few seconds.
-SyncOutcome runSync(const SyncSettings& s, TaskList& tasks, bool (*setClock)(const LocalTime&));
+// Runs a full sync. `tasks` is the device's briefing (merged in place).
+// With `lib` (SD card present) the repository's kitaplar/ folder is mirrored
+// into /kitaplar and each book's reading state goes up in cihaz.txt.
+// `setClock` writes the RTC. Leaves Wi-Fi off. Blocks for a few seconds
+// (longer while books download).
+SyncOutcome runSync(const SyncSettings& s, TaskList& tasks, const Library* lib, bool (*setClock)(const LocalTime&));

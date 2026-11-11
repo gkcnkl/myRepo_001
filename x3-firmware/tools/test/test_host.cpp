@@ -411,11 +411,70 @@ static void testSyncLogic() {
   CHECK(!buildPutBody("m", "YWI=", "", "main", body, 10));
 
   char state[512];
-  const size_t n = buildDeviceStateFile(local, "2026-11-11 07:02", state, sizeof state);
+  const size_t n = buildDeviceStateFile(local, nullptr, "2026-11-11 07:02", state, sizeof state);
   CHECK(n > 0 && strncmp(state, "# X3 cihaz durumu. guncellendi: 2026-11-11 07:02\n", 49) == 0);
   TaskList back;
   back.parse(state, n);
   CHECK(back.count == 3 && back.items[0].done && back.items[2].done);
+}
+
+static void testBookSync() {
+  CHECK(safeBookName("2026-06-06 SİNYAL #08 · Hasat- Döngüyü Tamamlamak.epub"));
+  CHECK(safeBookName("not.TXT"));
+  CHECK(!safeBookName("../x.epub") && !safeBookName("a/b.epub") && !safeBookName(".gizli.epub"));
+  CHECK(!safeBookName("resim.png") && !safeBookName("a\nb.epub") && !safeBookName(""));
+
+  const char* json =
+      "[{\"name\":\"README.md\",\"path\":\"kitaplar/README.md\",\"sha\":\"aaa\",\"size\":10,\"type\":\"file\","
+      "\"_links\":{\"self\":\"x\"}},"
+      "{\"name\": \"2026-06-06 Bülten #8.epub\", \"path\":\"kitaplar/2026-06-06 Bülten #8.epub\", \"sha\": \"b1\","
+      " \"size\": 3587, \"url\":\"u\", \"type\": \"file\", \"_links\": {\"git\":\"g\"}},"
+      "{\"name\":\"arsiv\",\"sha\":\"c\",\"size\":0,\"type\":\"dir\"},"
+      "{\"name\":\"Kısa.txt\",\"sha\":\"d2\",\"size\":12,\"type\":\"file\"}]";
+  RemoteBook rb[4];
+  CHECK(parseDirListing(json, rb, 4) == 2);
+  CHECK(strcmp(rb[0].name, "2026-06-06 Bülten #8.epub") == 0 && strcmp(rb[0].sha, "b1") == 0 && rb[0].size == 3587);
+  CHECK(strcmp(rb[1].name, "Kısa.txt") == 0 && rb[1].size == 12);
+  CHECK(parseDirListing(json, rb, 1) == 1);
+  CHECK(parseDirListing("[]", rb, 4) == 0);
+
+  char url[96];
+  CHECK(urlEncodePath("kitaplar/Bülten #8.epub", url, sizeof url));
+  CHECK(strcmp(url, "kitaplar/B%C3%BClten%20%238.epub") == 0);
+  CHECK(!urlEncodePath("kitaplar/Bülten #8.epub", url, 12));
+
+  const char* man = "b1 2026-06-06 Bülten #8.epub\nzz Eski bülten.epub\r\nbozuk satır yok\n";
+  char sha[44], name[80];
+  CHECK(manifestFind(man, "2026-06-06 Bülten #8.epub", sha, sizeof sha) && strcmp(sha, "b1") == 0);
+  CHECK(manifestFind(man, "Eski bülten.epub", sha, sizeof sha) && strcmp(sha, "zz") == 0);
+  CHECK(!manifestFind(man, "Yok.epub", sha, sizeof sha));
+  const char* c = man;
+  int lines = 0;
+  while (manifestNext(c, name, sizeof name, sha, sizeof sha)) ++lines;
+  CHECK(lines == 3);  // "bozuk satır yok" parses as sha "bozuk" + name
+
+  Library* lib = new Library();
+  bookFromFileName("Dubliners.epub", 1000, lib->books[0]);
+  lib->books[0].lastRead = 202611110702ull;
+  lib->books[0].percent = 42;
+  bookFromFileName("2026-06-06 Bülten #8.epub", 3587, lib->books[1]);
+  lib->books[1].lastRead = 202611101830ull;
+  lib->books[1].finished = true;
+  lib->books[1].percent = 97;
+  bookFromFileName("Yeni.txt", 10, lib->books[2]);
+  lib->count = 3;
+  TaskList tl;
+  tl.parse("[ ] 09:00 | Toplantı\n", 22);
+  char state[512];
+  const size_t n = buildDeviceStateFile(tl, lib, "2026-11-11 07:05", state, sizeof state);
+  CHECK(strstr(state, "# kitap | %42 | okunuyor | 2026-11-11 07:02 | Dubliners.epub\n") != nullptr);
+  CHECK(strstr(state, "# kitap | %100 | bitti | 2026-11-10 18:30 | 2026-06-06 Bülten #8.epub\n") != nullptr);
+  CHECK(strstr(state, "# kitap | %0 | baslanmadi | - | Yeni.txt\n") != nullptr);
+  TaskList back;
+  back.parse(state, n);
+  CHECK(back.count == 1);  // book lines are comments to the briefing parser
+  CHECK(buildDeviceStateFile(tl, lib, "x", state, 90) > 0 && strstr(state, "Yeni.txt") == nullptr);
+  delete lib;
 }
 
 static void testEmptyList() {
@@ -488,6 +547,7 @@ int main() {
   testEmptyList();
   testWifiFlow();
   testSyncLogic();
+  testBookSync();
   testLibraryModel();
   testShelfLayout();
   testLibraryNavigation();

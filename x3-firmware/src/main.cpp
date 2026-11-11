@@ -727,8 +727,10 @@ void stopWifi() {
 [[noreturn]] void syncAndRestart(Screen screenAfter) {
   snprintf(app.syncNote, sizeof app.syncNote, "Eşitleniyor...");
   if (app.screen == Screen::List) render(false);
-  const SyncOutcome out = runSync(syncSettings, app.tasks, setClock);
-  Serial.printf("[x3] sync: ok=%d changed=%d clock=%d %s\n", out.ok, out.changed, out.clockSet, out.message);
+  if (openBookIndex >= 0) closeBook();  // save the reading position before it goes up
+  const SyncOutcome out = runSync(syncSettings, app.tasks, app.sdAvailable ? &app.lib : nullptr, setClock);
+  Serial.printf("[x3] sync: ok=%d changed=%d clock=%d books +%d -%d !%d %s\n", out.ok, out.changed, out.clockSet,
+                out.booksAdded, out.booksRemoved, out.booksFailed, out.message);
   if (out.changed) {
     tasksPath = kBriefingPath;
     saveTasks();

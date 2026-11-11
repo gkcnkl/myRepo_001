@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "library.h"
 #include "tasks.h"
 
 // Marks tasks in `fresh` (just downloaded) as done when the same task
@@ -24,5 +25,36 @@ bool jsonStringField(const char* json, const char* key, char* out, size_t outSiz
 bool buildPutBody(const char* message, const char* base64, const char* sha, const char* branch, char* out,
                   size_t outSize);
 
-// What the device writes back: a stamp line, then the briefing as it knows it.
-size_t buildDeviceStateFile(const TaskList& tasks, const char* stamp, char* out, size_t outSize);
+// What the device writes back: a stamp line, the briefing as it knows it and
+// (when `lib` is given) one comment line per book with its reading state:
+//   # kitap | %42 | okunuyor | 2026-11-11 07:02 | <file name>
+// ("bitti" once the last page was reached, "baslanmadi" before the first read).
+// The task parser skips '#' lines, so the file still reads as a briefing.
+size_t buildDeviceStateFile(const TaskList& tasks, const Library* lib, const char* stamp, char* out,
+                            size_t outSize);
+
+// --- Books from the repository's kitaplar/ folder ------------------------------
+
+struct RemoteBook {
+  char name[80];
+  char sha[44];
+  uint32_t size;
+};
+
+// A repository file name the device may store: a readable book (.epub/.txt),
+// no path parts, no hidden or control characters, fits BookInfo::file.
+bool safeBookName(const char* name);
+
+// Reads a contents-API directory listing (JSON array) and keeps the files
+// that are safe book names. Returns how many were stored in `out`.
+int parseDirListing(const char* json, RemoteBook* out, int max);
+
+// Percent-encodes a repository path for a URL (keeps '/' and unreserved).
+// Returns false when `out` is too small.
+bool urlEncodePath(const char* in, char* out, size_t outSize);
+
+// The list of books that came from the repository, on the SD card as
+// "<sha> <name>" lines. Finds `name` and copies its sha (when `sha` is set).
+bool manifestFind(const char* manifest, const char* name, char* sha, size_t shaSize);
+// Walks the manifest: copies the next line's name (and sha); returns false at the end.
+bool manifestNext(const char*& cursor, char* name, size_t nameSize, char* sha, size_t shaSize);

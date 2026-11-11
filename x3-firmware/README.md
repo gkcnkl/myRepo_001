@@ -40,8 +40,16 @@ eşitlenir:
 
 - `brifing.txt` (Sabah Brifingi rutini yazar) indirilir; cihazda tamamlanan
   görevler (aynı saat + metin) yeni listede de tamamlanmış kalır.
-- `cihaz.txt` (cihazın gördüğü liste ve işaretler) değiştiyse geri yazılır;
-  rutin bir sonraki tazelemede bunu okur.
+- Deponun `kitaplar/` klasörü SD karttaki `/kitaplar`'a yansıtılır: yeni ya
+  da değişen `.epub`/`.txt` dosyaları iner (eşitleme başına en çok 5, dosya
+  başına en çok 8 MB), depodan silinen ve depodan gelmiş kitaplar cihazdan da
+  silinir (okuma durumu ve sayfa önbelleğiyle). Wi-Fi ile yüklenen kitaplara
+  dokunulmaz; depodan gelenlerin listesi `/kitaplar/.x3/esitlenen.txt`.
+- `cihaz.txt` (cihazın gördüğü liste, işaretler ve kitapların okuma durumu)
+  değiştiyse geri yazılır; rutin bir sonraki tazelemede bunu okur. Kitap
+  satırları brifing ayrıştırıcısı için yorumdur:
+  `# kitap | %42 | okunuyor | 2026-11-11 07:02 | Dubliners.epub`
+  (`bitti` = son sayfaya gelindi, `baslanmadi` = hiç açılmadı).
 - Saat NTP'den ayarlanır (UTC+3).
 - Bağlantı GitHub'ın kök sertifikalarıyla doğrulanır (`src/github_roots.h`).
 
@@ -50,7 +58,12 @@ Kurulum: GitHub'da özel bir depo (ör. `gkcnkl/x3-sync`) ve yalnız o depoya
 sayfasındaki **Eşitleme** bölümüne ev Wi-Fi adı/şifresi, anahtar, depo ve dal
 girilir; cihaz şifreyi ve anahtarı geri göstermez. Eşitlemeden sonra cihaz
 kendini yeniden başlatır (okuyucu için temiz heap); durum alt çubukta yazar
-("EŞİTLENDİ 07:02" ya da hata).
+("EŞİTLENDİ 07:02 · 2 YENİ KİTAP" ya da hata).
+
+Bültenler: `tools/newsletter/md2epub.py` ön bilgili (baslik, gonderen, tarih,
+web, dil) bir markdown bülteni tek bölümlük EPUB'a çevirir; bir rutin Gmail
+etiketindeki bültenleri bununla `kitaplar/`'a koyar, `cihaz.txt`'de `bitti`
+görünenlerin notunu yazar ve 7 gün sonra depodan siler.
 
 ## Kitaplık ve okuyucu
 
@@ -125,10 +138,10 @@ biçim anlaşılmamıştır (`2026-11-10 15:30` biçimi de kabul edilir).
 
 ## Hazır imajı yükleme (Windows)
 
-`release/x3-bugun-v0.10.0.bin` dosyasını esptool klasörüne kopyala, sonra:
+`release/x3-bugun-v0.11.0.bin` dosyasını esptool klasörüne kopyala, sonra:
 
 ```bash
-esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.10.0.bin
+esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.11.0.bin
 ```
 
 ## Fabrika firmware'ine dönüş

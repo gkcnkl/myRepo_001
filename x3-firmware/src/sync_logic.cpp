@@ -1,6 +1,7 @@
 #include "sync_logic.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 int mergeDoneMarks(TaskList& fresh, const TaskList& local) {
@@ -111,8 +112,126 @@ bool buildPutBody(const char* message, const char* base64, const char* sha, cons
   return true;
 }
 
-size_t buildDeviceStateFile(const TaskList& tasks, const char* stamp, char* out, size_t outSize) {
+size_t buildDeviceStateFile(const TaskList& tasks, const Library* lib, const char* stamp, char* out,
+                            size_t outSize) {
   const int n = snprintf(out, outSize, "# X3 cihaz durumu. guncellendi: %s\n", stamp);
   if (n < 0 || static_cast<size_t>(n) >= outSize) return 0;
-  return static_cast<size_t>(n) + tasks.serialize(out + n, outSize - n);
+  size_t o = static_cast<size_t>(n) + tasks.serialize(out + n, outSize - n);
+  if (lib == nullptr) return o;
+  for (int i = 0; i < lib->count; ++i) {
+    const BookInfo& b = lib->books[i];
+    char when[20] = "-";
+    if (b.lastRead >= 200001010000ull && b.lastRead < 210001010000ull) {
+      const uint64_t v = b.lastRead;
+      snprintf(when, sizeof when, "%04u-%02u-%02u %02u:%02u", static_cast<unsigned>(v / 100000000ull),
+               static_cast<unsigned>(v / 1000000ull % 100), static_cast<unsigned>(v / 10000ull % 100),
+               static_cast<unsigned>(v / 100 % 100), static_cast<unsigned>(v % 100));
+    }
+    const char* state = b.finished ? "bitti" : (b.lastRead != 0 ? "okunuyor" : "baslanmadi");
+    const int w = snprintf(out + o, outSize - o, "# kitap | %%%u | %s | %s | %s\n", b.finished ? 100u : b.percent,
+                           state, when, b.file);
+    if (w < 0 || o + static_cast<size_t>(w) >= outSize) {
+      out[o] = '\0';  // drop the line that does not fit
+      break;
+    }
+    o += static_cast<size_t>(w);
+  }
+  return o;
+}
+
+bool safeBookName(const char* name) {
+  const size_t n = strlen(name);
+  if (n == 0 || n >= sizeof(BookInfo{}.file) || name[0] == '.' || name[0] == ' ') return false;
+  for (const char* p = name; *p; ++p) {
+    const unsigned char c = static_cast<unsigned char>(*p);
+    if (c < 0x20 || c == 0x7f || strchr("/\\:*?\"<>|", c) != nullptr) return false;
+  }
+  BookInfo probe;
+  return bookFromFileName(name, 0, probe);
+}
+
+int parseDirListing(const char* json, RemoteBook* out, int max) {
+  static const char kName[] = "\"name\"";
+  int count = 0;
+  const char* p = strstr(json, kName);
+  while (p != nullptr && count < max) {
+    const char* next = strstr(p + 1, kName);
+    // Copy this entry (up to the next "name") so the field lookups stay inside it.
+    char entry[1024];
+    size_t len = next != nullptr ? static_cast<size_t>(next - p) : strlen(p);
+    if (len >= sizeof entry) len = sizeof entry - 1;
+    memcpy(entry, p, len);
+    entry[len] = '\0';
+    RemoteBook& r = out[count];
+    char type[12];
+    char size[16] = "0";
+    if (jsonStringField(entry, "name", r.name, sizeof r.name) && jsonStringField(entry, "sha", r.sha, sizeof r.sha) &&
+        jsonStringField(entry, "type", type, sizeof type) && strcmp(type, "file") == 0 && safeBookName(r.name)) {
+      const char* s = strstr(entry, "\"size\"");
+      if (s != nullptr) {
+        s = strchr(s, ':');
+        if (s != nullptr) snprintf(size, sizeof size, "%s", s + 1);
+      }
+      r.size = static_cast<uint32_t>(strtoul(size, nullptr, 10));
+      ++count;
+    }
+    p = next;
+  }
+  return count;
+}
+
+bool urlEncodePath(const char* in, char* out, size_t outSize) {
+  static const char kHex[] = "0123456789ABCDEF";
+  size_t o = 0;
+  for (const unsigned char* p = reinterpret_cast<const unsigned char*>(in); *p; ++p) {
+    const unsigned char c = *p;
+    const bool keep = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+                      c == '-' || c == '_' || c == '.' || c == '~' || c == '/';
+    if (o + (keep ? 1 : 3) >= outSize) return false;
+    if (keep) {
+      out[o++] = static_cast<char>(c);
+    } else {
+      out[o++] = '%';
+      out[o++] = kHex[c >> 4];
+      out[o++] = kHex[c & 15];
+    }
+  }
+  out[o] = '\0';
+  return true;
+}
+
+bool manifestNext(const char*& cursor, char* name, size_t nameSize, char* sha, size_t shaSize) {
+  while (*cursor) {
+    const char* line = cursor;
+    const char* end = strchr(line, '\n');
+    if (end == nullptr) end = line + strlen(line);
+    cursor = *end ? end + 1 : end;
+    const char* space = static_cast<const char*>(memchr(line, ' ', static_cast<size_t>(end - line)));
+    if (space == nullptr) continue;
+    const char* nameEnd = end;
+    if (nameEnd > space + 1 && nameEnd[-1] == '\r') --nameEnd;
+    const size_t shaLen = static_cast<size_t>(space - line);
+    const size_t nameLen = static_cast<size_t>(nameEnd - (space + 1));
+    if (nameLen == 0 || nameLen >= nameSize || (sha != nullptr && shaLen >= shaSize)) continue;
+    memcpy(name, space + 1, nameLen);
+    name[nameLen] = '\0';
+    if (sha != nullptr) {
+      memcpy(sha, line, shaLen);
+      sha[shaLen] = '\0';
+    }
+    return true;
+  }
+  return false;
+}
+
+bool manifestFind(const char* manifest, const char* name, char* sha, size_t shaSize) {
+  char n[80], s[44];
+  const char* c = manifest;
+  while (manifestNext(c, n, sizeof n, s, sizeof s)) {
+    if (strcmp(n, name) == 0) {
+      if (sha != nullptr) snprintf(sha, shaSize, "%s", s);
+      return true;
+    }
+  }
+  return false;
 }
