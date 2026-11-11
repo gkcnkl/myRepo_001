@@ -1,34 +1,33 @@
-# Bülten rutini: kurulum
+# Bülten rutini: talimat
 
-claude.ai/code/routines → **New routine** (Yeni rutin):
+https://claude.ai/code/routines/trig_014tSfZZe8wqHBGHat1zXsBd → Edit → talimat kutusunun içeriğini SİL ve çizginin altındaki metnin tamamını yapıştır. Depo: `gkcnkl/x3-sync`. Connectors: Gmail, Claude Docs.
 
-- **Ad:** Bültenler · Gmail → X3 → Beyin
-- **Zaman:** her gün 06:41 (Europe/Istanbul)
-- **Depo (Repository):** `gkcnkl/x3-sync`
-- **Connectors:** Gmail, Claude Docs
-- **Talimat:** aşağıdaki çizginin altındaki metnin tamamı
+Proton Mail'den bülten göndermek için: bülteni **gokcenkul+x3@gmail.com** adresine ilet (elle ya da Proton'da otomatik iletme kuralıyla).
 
 ---
 
-Her sabah çalışan bülten görevi. Gmail'de "X3" etiketli bültenleri e-kitaba çevirip Xteink X3 okuyucunun kitaplığına koyar; cihazda sonuna kadar okunan bültenler için Beyin kasasına özetli not hazırlar; notu yazılmış bültenleri 7 gün sonra kitaplıktan kaldırır. Yeni oturum, hafızan yok. Türkçe yaz; em dash (uzun tire) hiçbir yerde kullanma. Zaman dilimi Europe/Istanbul. Onay bekleme, soru sorma.
+Her sabah çalışan bülten görevi. Gmail'de "X3" etiketli ya da gokcenkul+x3@gmail.com adresine gelen (Proton Mail'den iletilen) bültenleri e-kitaba çevirip Xteink X3 okuyucunun kitaplığına koyar; cihazda sonuna kadar okunan bültenler için Beyin kasasına özetli not hazırlar; notu yazılmış bültenleri 7 gün sonra kitaplıktan kaldırır. Yeni oturum, hafızan yok. Türkçe yaz; em dash (uzun tire) hiçbir yerde kullanma. Zaman dilimi Europe/Istanbul. Onay bekleme, soru sorma.
 
-DEPO: gkcnkl/x3-sync (özel, dal main). Bu rutine depo olarak bağlıdır; klonu çalışma klasöründe bul. Klon yoksa mcp__claude-code-remote__add_repo ile {owner: "gkcnkl", repo: "x3-sync", access: "push"} ekle ve söylediği klonlama komutunu çalıştır. Depoya erişilemezse hiçbir şeye dokunma, PushNotification ile tek satır bildir ve bitir. Depodaki README.md düzeni anlatır. Dosyalar:
+DEPO: gkcnkl/x3-sync (özel, dal main). Rutinin ayarlarında depo olarak seçilidir; klonu çalışma klasöründe (ör. /home/user/x3-sync) bul. Klon yoksa ve mcp__claude-code-remote__add_repo aracı varsa onunla {owner: "gkcnkl", repo: "x3-sync", access: "push"} ekle ve söylediği klonlama komutunu çalıştır. Depoya erişilemezse hiçbir şeye dokunma, sorunu tek satırla bildir (PushNotification yoksa sohbete yaz) ve bitir. Depodaki README.md düzeni anlatır. Dosyalar:
 - bultenler.txt: kayıt defteri. Satır biçimi: "gmail_id | dosya | eklendi | not yazıldı | silindi" (tarihler YYYY-MM-DD, boşsa "-"). "#" satırları açıklamadır.
 - kitaplar/: cihazın indirdiği e-kitaplar. Cihaz buradan silinen ve depodan gelmiş kitapları kendinden de siler.
 - kaynak/<gmail_id>.md: bültenin markdown hali.
 - cihaz.txt: cihazın yazdığı durum. Kitap satırları: "# kitap | %<yüzde> | <okunuyor|bitti|baslanmadi> | <son okuma> | <dosya>". Dosya yoksa adım B'yi atla.
 - tools/md2epub.py: dönüştürücü.
 
+GMAIL: Gmail bağlayıcısı (search_threads, get_thread, get_message) yoksa Composio üzerinden kişisel Gmail hesabını (gokcenkul@gmail.com) yalnız okuma için kullan. Claude Docs bağlayıcısı yoksa adım B'yi atla ve raporda belirt.
+
 A. YENİ BÜLTENLER
-1. Gmail'de label:X3 araması yap (search_threads, sayfalayarak). Her thread'in mesajlarını get_thread ile al. bultenler.txt'de gmail_id'si olmayan her mesaj yenidir. Tek çalıştırmada en fazla 8 yeni bülten işle; kalanı yarına bırak ve raporda yaz.
-2. Her yeni bülten için mesajı get_message ile düz metin olarak oku ve kaynak/<gmail_id>.md dosyasını yaz:
+1. Gmail'de "label:X3 OR to:gokcenkul+x3@gmail.com OR deliveredto:gokcenkul+x3@gmail.com" araması yap (sayfalayarak). Her thread'in mesajlarını al. bultenler.txt'de gmail_id'si olmayan her mesaj yenidir. Tek çalıştırmada en fazla 8 yeni bülten işle; kalanı yarına bırak ve raporda yaz.
+2. Her yeni bülten için mesajı düz metin olarak oku ve kaynak/<gmail_id>.md dosyasını yaz:
 ---
-baslik: <konu satırı; "Fwd:" gibi önekler atılmış>
+baslik: <konu satırı; "Fwd:", "Fw:", "İlt:" gibi önekler atılmış>
 gonderen: <gönderenin görünen adı>
 tarih: <mesaj tarihi YYYY-MM-DD>
 web: <metinde "View this post on the web" ya da tarayıcıda gör bağlantısı varsa o URL, yoksa satırı koyma>
 dil: <metnin dili, tr ya da en>
 ---
+   İletilmiş mesajda (Proton'dan gelenler: "Forwarded message" / "Original Message" bloğu ya da "From:/Date:/Subject:" satırları) gonderen, tarih ve baslik bu bloktaki asıl bültenden alınır, iletenden değil; iletme başlık bloğu ve iletenin imzası gövdeye girmez.
    Gövde: bültenin metni BİREBİR, kısaltmadan ve yeniden yazmadan. Yalnız biçim: bölüm başlıkları "## ", alt başlıklar "### ", madde listeleri "- ", vurgular **...**. Abonelikten çık, paylaş, beğen, uygulamayı indir, takip pikseli ve yasal altbilgi satırlarını at (md2epub de bunların bir kısmını atar). Görsel gömme; görsel yerine bir şey yazma.
 3. Dosya adını al: python3 -I tools/md2epub.py kaynak/<gmail_id>.md (çıktı tek satır ad). Sonra: python3 -I tools/md2epub.py kaynak/<gmail_id>.md "kitaplar/<ad>". kitaplar/ altında aynı ad varsa adın sonuna (uzantıdan önce) " (2)" ekle. Komut hata verirse o bülteni atla, raporda yaz.
 4. bultenler.txt'nin sonuna "<gmail_id> | <ad> | <bugün> | - | -" satırını ekle.
