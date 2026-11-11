@@ -1,0 +1,18 @@
+{
+  "adapter": "",
+  "startupDelaySeconds": 3,
+
+  "networks": {
+    "NAT10_5G": {
+      "mode": "static",
+      "ip": "10.9.100.196",
+      "prefixLength": 24,
+      "gateway": "10.9.100.254",
+      "dns": ["8.8.8.8"]
+    }
+  },
+
+  "default": {
+    "mode": "dhcp"
+  }
+}
