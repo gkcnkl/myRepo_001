@@ -13,9 +13,11 @@
 //   [ ] Alt katı temizle                   open task, no time
 //   [-] 13:30-14:00 | İptal edilen iş      cancelled (also "[~]")
 //   [/] Rapor                              started, not finished
+//   hava: bulut | 8 | 17                   weather: kind (gunes, parcali, bulut,
+//                                          sis, yagmur, kar, firtina), min, max °C
 //   olcu: Adım | 3728 | 10000 | adım       a measure drawn as a horizontal bar
 //                                          under its section heading (value "-"
-//                                          = no data; up to 8). A section
+//                                          = no data; up to 12). A section
 //                                          with measures but no tasks gets
 //                                          a placeholder row at the end
 //   plain line                             open task
@@ -47,11 +49,18 @@ struct Measure {
   int8_t section; // -1 = before any heading
 };
 
+struct Weather {
+  char kind[12] = "";  // gunes, parcali, bulut, sis, yagmur, kar, firtina
+  int16_t min = 0;
+  int16_t max = 0;
+  bool valid = false;
+};
+
 struct TaskList {
   static constexpr int kMax = 30;
   static constexpr int kMaxIndicators = 3;
   static constexpr int kMaxSections = 6;
-  static constexpr int kMaxMeasures = 8;
+  static constexpr int kMaxMeasures = 12;
 
   char eyebrow[64] = "";
   char title[48] = "";
@@ -62,6 +71,7 @@ struct TaskList {
   int sectionCount = 0;
   Task items[kMax];
   int count = 0;
+  Weather weather;
   Measure measures[kMaxMeasures];
   int measureCount = 0;
   // How many measures belong to section `s`.

@@ -173,6 +173,67 @@ int16_t countCell(Adafruit_GFX& g, const char* value, const char* caption, int16
   return x;
 }
 
+// Small weather glyphs (about 22x16) centered on (cx, cy), drawn with lines.
+void cloudShape(Adafruit_GFX& g, int16_t cx, int16_t cy, bool filled) {
+  // two bumps on a flat base
+  if (filled) {
+    g.fillCircle(cx - 4, cy, 5, 1);
+    g.fillCircle(cx + 3, cy - 2, 6, 1);
+    g.fillRect(cx - 9, cy, 18, 5, 1);
+  } else {
+    g.drawCircle(cx - 4, cy, 5, 1);
+    g.drawCircle(cx + 3, cy - 2, 6, 1);
+    g.fillRect(cx - 4, cy - 3, 8, 7, 0);   // clear the overlap inside
+    g.fillCircle(cx - 4, cy, 4, 0);
+    g.fillCircle(cx + 3, cy - 2, 5, 0);
+    g.drawFastHLine(cx - 9, cy + 5, 19, 1);
+    g.drawFastVLine(cx - 9, cy, 5, 1);
+    g.drawFastVLine(cx + 9, cy - 1, 6, 1);
+  }
+}
+
+void sunShape(Adafruit_GFX& g, int16_t cx, int16_t cy, int16_t r) {
+  g.drawCircle(cx, cy, r, 1);
+  const int8_t dx[8] = {0, 1, 1, 1, 0, -1, -1, -1}, dy[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
+  for (int i = 0; i < 8; ++i) {
+    const int16_t a = (dx[i] && dy[i]) ? r + 1 : r + 2, b = (dx[i] && dy[i]) ? r + 3 : r + 5;
+    g.drawLine(cx + dx[i] * a, cy + dy[i] * a, cx + dx[i] * b, cy + dy[i] * b, 1);
+  }
+}
+
+void weatherIcon(Adafruit_GFX& g, const char* kind, int16_t cx, int16_t cy) {
+  if (strcmp(kind, "gunes") == 0) {
+    sunShape(g, cx, cy, 5);
+  } else if (strcmp(kind, "parcali") == 0) {
+    sunShape(g, cx - 4, cy - 4, 4);
+    g.fillCircle(cx + 1, cy + 3, 5, 0);
+    g.fillCircle(cx + 7, cy + 1, 6, 0);
+    g.fillRect(cx - 4, cy + 3, 18, 6, 0);
+    cloudShape(g, cx + 3, cy + 3, false);
+  } else if (strcmp(kind, "bulut") == 0) {
+    cloudShape(g, cx, cy + 1, false);
+  } else if (strcmp(kind, "sis") == 0) {
+    for (int i = -1; i <= 1; ++i) g.drawFastHLine(cx - 9 + (i & 1) * 3, cy + i * 5, 16, 1);
+  } else if (strcmp(kind, "yagmur") == 0) {
+    cloudShape(g, cx, cy - 3, false);
+    for (int i = -1; i <= 1; ++i) g.drawLine(cx + i * 5 + 1, cy + 5, cx + i * 5 - 1, cy + 9, 1);
+  } else if (strcmp(kind, "kar") == 0) {
+    cloudShape(g, cx, cy - 3, false);
+    for (int i = -1; i <= 1; ++i) {
+      g.drawPixel(cx + i * 5, cy + 6, 1);
+      g.drawFastHLine(cx + i * 5 - 1, cy + 7, 3, 1);
+      g.drawPixel(cx + i * 5, cy + 8, 1);
+    }
+  } else if (strcmp(kind, "firtina") == 0) {
+    cloudShape(g, cx, cy - 3, false);
+    g.drawLine(cx + 1, cy + 3, cx - 2, cy + 7, 1);
+    g.drawLine(cx - 2, cy + 7, cx + 2, cy + 7, 1);
+    g.drawLine(cx + 2, cy + 7, cx - 1, cy + 11, 1);
+  } else {
+    cloudShape(g, cx, cy + 1, false);
+  }
+}
+
 // Masthead: eyebrow, serif title, counts on the right, 2px rule, dateline.
 void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* title, bool showCounts,
               bool showSubtitle = true, const char* dateline = nullptr) {
@@ -206,9 +267,20 @@ void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* 
     snprintf(date, sizeof date, "%s", d.s);
   }
   drawTracked(g, &InterSemi12, date, kM, 124, 1, 1);
+  // Weather at the right end of the dateline: an icon and "min° / max°".
+  int16_t rightEnd = kW - kM;
+  if (app.tasks.weather.valid) {
+    char temps[24];
+    snprintf(temps, sizeof temps, "%d° / %d°", app.tasks.weather.min, app.tasks.weather.max);
+    Encoded e(temps);
+    const int16_t w = static_cast<int16_t>(widthOf(g, &Inter14, e.s));
+    drawEnc(g, &Inter14, e.s, kW - kM - w, 124, 1);
+    weatherIcon(g, app.tasks.weather.kind, kW - kM - w - 16, 119);
+    rightEnd = kW - kM - w - 32;
+  }
   if (showSubtitle && app.tasks.subtitle[0]) {
     const int16_t x = kM + trackedWidth(&InterSemi12, date, 1) + 14;
-    text(g, &Inter14, app.tasks.subtitle, x, 124, kW - kM - x);
+    text(g, &Inter14, app.tasks.subtitle, x, 124, rightEnd - x);
   }
 }
 
@@ -375,7 +447,22 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
       if (task.time[0]) text(g, &Play18, task.time, tx, y + 29, kTimeColW - 8, ink);
       tx += kTimeColW;
     }
-    Encoded e(task.text);
+    // Overdue marks: a leading run of "!" (one per day late) is drawn as
+    // heavy, spaced bars so the count reads at a glance.
+    const char* body = task.text;
+    int bangs = 0;
+    while (body[bangs] == '!' && bangs < 9) ++bangs;
+    if (bangs > 0) {
+      body += bangs;
+      while (*body == ' ') ++body;
+      for (int b = 0; b < bangs; ++b) {
+        const int16_t bx = tx + b * 7;
+        g.fillRect(bx, y + 12, 3, 12, ink);
+        g.fillRect(bx, y + 26, 3, 3, ink);
+      }
+      tx += bangs * 7 + 6;
+    }
+    Encoded e(body);
     fitWidth(g, &InterMed18, e.s, kW - kM - tx);
     drawEnc(g, &InterMed18, e.s, tx, y + 29, ink);
     if (task.done || task.cancelled) g.drawFastHLine(tx, y + 23, widthOf(g, &InterMed18, e.s), ink);

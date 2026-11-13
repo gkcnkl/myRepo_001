@@ -34,7 +34,7 @@ struct App {
 
   // List layout (pixels, portrait 528x792), shared with ui.cpp so scrolling
   // and drawing agree on what fits.
-  static constexpr int kTopNoIndicators = 140;
+  static constexpr int kTopNoIndicators = 150;
   static constexpr int kTopWithIndicators = 296;
   static constexpr int kListBottom = 712;
   static constexpr int kRowH = 46;

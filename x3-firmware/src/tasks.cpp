@@ -89,6 +89,31 @@ const char* const kTitleKeys[] = {"baslik", "başlık", nullptr};
 const char* const kSubtitleKeys[] = {"alt", nullptr};
 const char* const kIndicatorKeys[] = {"gosterge", "gösterge", nullptr};
 const char* const kMeasureKeys[] = {"olcu", "ölçü", nullptr};
+const char* const kWeatherKeys[] = {"hava", nullptr};
+
+// "-3", "8", "17,4" -> rounded whole degrees.
+int16_t parseDegrees(const char* s, size_t n, bool& ok) {
+  ok = false;
+  int sign = 1, v = 0, frac = -1;
+  size_t i = 0;
+  while (i < n && s[i] == ' ') ++i;
+  if (i < n && (s[i] == '-' || static_cast<unsigned char>(s[i]) == 0xE2)) {  // '-' or U+2212
+    sign = -1;
+    i += s[i] == '-' ? 1 : 3;
+  }
+  for (; i < n; ++i) {
+    if (s[i] >= '0' && s[i] <= '9') {
+      if (frac < 0) v = v * 10 + (s[i] - '0'), ok = true;
+      else if (frac == 0) frac = s[i] - '0';
+    } else if (s[i] == ',' || s[i] == '.') {
+      frac = 0;
+    } else {
+      break;
+    }
+  }
+  if (frac >= 5) ++v;
+  return static_cast<int16_t>(sign * v);
+}
 
 // "3728", "3.728" or "-" (no data) -> number, or -1.
 int32_t parseAmount(const char* s, size_t n) {
@@ -135,6 +160,7 @@ void TaskList::parse(const char* data, size_t len) {
   indicatorCount = 0;
   sectionCount = 0;
   measureCount = 0;
+  weather = Weather{};
   eyebrow[0] = title[0] = subtitle[0] = '\0';
   int currentSection = -1;
 
@@ -169,6 +195,18 @@ void TaskList::parse(const char* data, size_t len) {
     if (keyValue(line, n, kEyebrowKeys, v, vn)) { copyText(eyebrow, sizeof eyebrow, v, vn); continue; }
     if (keyValue(line, n, kTitleKeys, v, vn)) { copyText(title, sizeof title, v, vn); continue; }
     if (keyValue(line, n, kSubtitleKeys, v, vn)) { copyText(subtitle, sizeof subtitle, v, vn); continue; }
+    if (keyValue(line, n, kWeatherKeys, v, vn)) {
+      // hava: kind | min | max
+      size_t l1, rest1, l2, rest2;
+      const char *r1, *r2;
+      if (!splitBar(v, vn, l1, r1, rest1) || !splitBar(r1, rest1, l2, r2, rest2)) continue;
+      bool okMin, okMax;
+      weather.min = parseDegrees(r1, l2, okMin);
+      weather.max = parseDegrees(r2, rest2, okMax);
+      copyText(weather.kind, sizeof weather.kind, v, l1);
+      weather.valid = okMin && okMax;
+      continue;
+    }
     if (keyValue(line, n, kMeasureKeys, v, vn)) {
       // olcu: label | value | goal | unit
       size_t l1, rest1, l2, rest2, l3, rest3;
@@ -264,6 +302,11 @@ size_t TaskList::serialize(char* buf, size_t bufSize) const {
   if (eyebrow[0]) { put("ust: "); put(eyebrow); put("\n"); }
   if (title[0]) { put("baslik: "); put(title); put("\n"); }
   if (subtitle[0]) { put("alt: "); put(subtitle); put("\n"); }
+  if (weather.valid) {
+    char w[48];
+    snprintf(w, sizeof w, "hava: %s | %d | %d\n", weather.kind, weather.min, weather.max);
+    put(w);
+  }
   for (int i = 0; i < indicatorCount; ++i) {
     put("gosterge: ");
     put(indicators[i].label);

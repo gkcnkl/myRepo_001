@@ -426,6 +426,29 @@ static void testSyncLogic() {
   CHECK(back.count == 3 && back.items[0].done && back.items[2].done);
 }
 
+static void testWeather() {
+  TaskList t;
+  const char* f = "hava: kar | -3,4 | 2,6\n## A\n[ ] x\n";
+  t.parse(f, strlen(f));
+  CHECK(t.weather.valid && strcmp(t.weather.kind, "kar") == 0 && t.weather.min == -3 && t.weather.max == 3);
+  char out[256];
+  t.serialize(out, sizeof out);
+  CHECK(strstr(out, "hava: kar | -3 | 3\n") != nullptr);
+  TaskList bad;
+  const char* g = "hava: bulut | ? | 7\n";
+  bad.parse(g, strlen(g));
+  CHECK(!bad.weather.valid);
+  TaskList many;
+  char buf[1024] = "## Alışkanlıklar\n";
+  for (int i = 0; i < 14; ++i) {
+    char line[48];
+    snprintf(line, sizeof line, "olcu: M%d | %d | 10 | x\n", i, i);
+    strcat(buf, line);
+  }
+  many.parse(buf, strlen(buf));
+  CHECK(many.measureCount == TaskList::kMaxMeasures && TaskList::kMaxMeasures == 12);
+}
+
 static void testSixSections() {
   TaskList t;
   const char* f = "## A\n[ ] a\n## B\n[ ] b\n## C\n[ ] c\n## D\n[ ] d\n## E\n[ ] e\n## F\n[ ] f\n## G\n[ ] g\n";
@@ -695,6 +718,7 @@ int main() {
   testSortFinished();
   testMeasures();
   testSixSections();
+  testWeather();
   testMeasuresOnlySection();
   testLibraryModel();
   testShelfLayout();
