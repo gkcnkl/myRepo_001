@@ -71,6 +71,25 @@ void setTrace(TraceFn fn);
 // Why the last open or chapter layout failed ("sayfalama: OutOfMemory"), or "".
 const char* lastError();
 
+// Reading typography, chosen on the device (CONFIRM cycles the size) or on the
+// transfer page. Every combination lays out into its own page cache, and the
+// reading position survives a change (it is a character offset).
+struct Typography {
+  uint8_t sizePx = 27;          // body text size
+  uint8_t lineSpacingPct = 118; // line height in % of the size
+  uint8_t marginX = 30;         // left and right page margin
+};
+constexpr uint8_t kSizePresets[] = {21, 24, 27, 30, 34};
+constexpr uint8_t kSpacingPresets[] = {108, 118, 132};
+constexpr uint8_t kMarginPresets[] = {18, 30, 42};
+// Clamps a typography to the supported presets (nearest value).
+Typography sanitize(const Typography& t);
+// The next size preset after `sizePx` (wraps around).
+uint8_t nextSize(uint8_t sizePx);
+// Applies to the next open(); an open book must be reopened to change.
+void setTypography(const Typography& t);
+const Typography& typography();
+
 struct Position {
   uint16_t spine = 0;
   uint32_t charOffset = 0;  // layout independent: survives font/size changes

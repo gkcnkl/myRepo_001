@@ -370,6 +370,8 @@ static void testLibraryNavigation() {
   CHECK(a.onButton(Button::Down, 0).pageDelta == 1);
   CHECK(a.onButton(Button::Left, 0).pageDelta == -1);
   CHECK(a.onButton(Button::Up, 0).pageDelta == -1);
+  fx = a.onButton(Button::Confirm, 0);  // next text size, stays in the book
+  CHECK(fx.nextFontSize && !fx.closeBook && a.screen == Screen::Reader);
   CHECK(!a.onTick(App::kIdleSleepMs).sleep);  // reading allows longer idle
   fx = a.onButton(Button::Power, 0);
   CHECK(fx.sleep && fx.closeBook);

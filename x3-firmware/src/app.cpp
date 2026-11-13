@@ -178,6 +178,8 @@ Effects App::onButton(Button b, uint32_t nowMs) {
       } else if (b == Button::Back) {
         screen = Screen::Library;
         fx.closeBook = fx.redraw = fx.fullRefresh = true;
+      } else if (b == Button::Confirm) {
+        fx.nextFontSize = fx.redraw = fx.fullRefresh = true;
       }
       break;
 

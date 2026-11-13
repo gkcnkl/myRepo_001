@@ -34,10 +34,11 @@ input[type=file]{display:none}
 .book button{padding:8px 12px;min-height:36px;background:transparent;color:var(--ink)}
 .empty{font-size:13.5px;color:var(--muted);padding:14px 2px;border-bottom:1px solid var(--line)}
 progress{width:100%;height:6px;margin-top:12px;accent-color:var(--lila)}
+[hidden]{display:none!important}
 .fld{display:block;margin-top:12px}
 .fld span{display:block;font-size:9.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
-.fld input{width:100%;font:15px -apple-system,sans-serif;padding:11px 12px;background:var(--sand);border:1px solid var(--line);color:var(--ink);min-height:44px}
-.fld input:focus{outline:2px solid var(--lila);outline-offset:2px}
+.fld input,.fld select{width:100%;font:15px -apple-system,sans-serif;padding:11px 12px;background:var(--sand);border:1px solid var(--line);color:var(--ink);min-height:44px}
+.fld input:focus,.fld select:focus{outline:2px solid var(--lila);outline-offset:2px}
 .opt{font-size:13px;color:var(--ink);display:inline-flex;gap:8px;align-items:center;min-height:44px}
 .opt input{width:18px;height:18px;accent-color:var(--lila)}
 </style></head><body><div class="wrap">
@@ -58,6 +59,21 @@ progress{width:100%;height:6px;margin-top:12px;accent-color:var(--lila)}
 <div class="row"><button type="submit">Kaydet</button><span class="pill" id="sst" hidden></span></div>
 </form>
 <div class="note">Cihaz uyanınca (en çok yarım saatte bir) ev Wi-Fi'ına bağlanır, depodaki <code>brifing.txt</code>'yi alır, tamamladığın görevleri <code>cihaz.txt</code> olarak geri yazar ve saati internetten ayarlar. Anahtar yalnız bu depoya, yalnız "Contents" izniyle olmalı; cihaz onu hiçbir zaman geri göstermez.</div>
+</div>
+
+<div class="sec">
+<h2>Okuma</h2><div class="hr"></div>
+<form id="rf">
+<label class="fld"><span>YAZI BOYUTU</span><select name="size" id="r_size">
+<option value="21">Küçük · 21</option><option value="24">Orta · 24</option><option value="27">Büyük · 27</option><option value="30">Daha büyük · 30</option><option value="34">En büyük · 34</option></select></label>
+<label class="fld"><span>SATIR ARALIĞI</span><select name="space" id="r_space">
+<option value="108">Sık</option><option value="118">Normal</option><option value="132">Geniş</option></select></label>
+<label class="fld"><span>KENAR BOŞLUĞU</span><select name="margin" id="r_margin">
+<option value="18">Dar</option><option value="30">Normal</option><option value="42">Geniş</option></select></label>
+<p id="r_demo" style="margin:14px 0 4px;font-family:Georgia,'Times New Roman',serif;text-align:justify;hyphens:auto;border:1px solid var(--line);background:#fff;color:#111">Örnek paragraf: ekranda yaklaşık böyle görünür. Kitap okurken TAMAM tuşu da yazı boyutunu sırayla büyütür; okuduğun yer korunur.</p>
+<div class="row"><button type="submit">Kaydet</button><span class="pill" id="rst" hidden></span></div>
+</form>
+<div class="note">Değişiklik bir sonraki kitap açılışında geçerli olur. Her boyut ilk açılışta yeniden sayfalanır (birkaç saniye), sonra hızlıdır.</div>
 </div>
 
 <div class="sec">
@@ -232,6 +248,18 @@ document.getElementById('sf').onsubmit=function(e){
   }).catch(function(){sshow('Kaydedilemedi')});
 };
 loadSettings();
+var rf=document.getElementById('rf'),rst=document.getElementById('rst'),demo=document.getElementById('r_demo');
+// Preview at the device's scale: the 528 px wide panel shown 300 px wide.
+function rdemo(){var k=300/528,sz=+rf.size.value,sp=+rf.space.value,mg=+rf.margin.value;
+  demo.style.width='300px';demo.style.boxSizing='border-box';demo.style.fontSize=(sz*k)+'px';
+  demo.style.lineHeight=(sp/100)+'';demo.style.padding='10px '+(mg*k)+'px'}
+['size','space','margin'].forEach(function(n){rf[n].onchange=rdemo});
+rf.size.value='27';rf.space.value='118';rf.margin.value='30';rdemo();
+fetch('/okuma').then(function(r){return r.text()}).then(function(x){var c=x.split('\t');
+  rf.size.value=c[0];rf.space.value=c[1];rf.margin.value=c[2];rdemo()}).catch(function(){});
+rf.onsubmit=function(e){e.preventDefault();rst.hidden=false;rst.textContent='Kaydediliyor…';
+  fetch('/okuma',{method:'POST',body:new URLSearchParams(new FormData(rf))}).then(function(r){return r.text()})
+  .then(function(m){rst.textContent=m}).catch(function(){rst.textContent='Kaydedilemedi'})};
 document.getElementById('f').onchange=function(e){
   var file=e.target.files[0];if(!file)return;
   var rd=new FileReader();rd.onload=function(){t.value=rd.result;show('Dosya yüklendi, Kaydet’e bas')};rd.readAsText(file,'utf-8');

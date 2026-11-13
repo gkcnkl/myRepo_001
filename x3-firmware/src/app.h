@@ -21,6 +21,7 @@ struct Effects {
   bool closeBook = false;    // save the position and close the reader
   int8_t pageDelta = 0;      // +1 next page, -1 previous page
   bool syncNow = false;      // sync with GitHub over the home Wi-Fi
+  bool nextFontSize = false; // reader: switch to the next text size and re-lay out
 };
 
 struct App {

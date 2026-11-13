@@ -60,12 +60,22 @@ using namespace freeink::book;
 
 namespace {
 
-// Typography: Literata 21 px, justified, hyphenated (Turkish or English).
-constexpr uint16_t kBodySizePx = 21;
-constexpr int16_t kMarginX = 30;
+// Typography: Literata, justified, hyphenated (Turkish or English); size,
+// line spacing and side margins come from setTypography().
 constexpr int16_t kMarginTop = 30;
-// Bump when anything that changes page layout changes (fonts, metrics).
-constexpr uint32_t kFontFingerprint = 0x4C495432u /* "LIT2": bump on any layout change (fonts, run caps) */ ^ (kBodySizePx << 8);
+// Bump when anything that changes page layout changes (fonts, metrics). Size,
+// margins and spacing are hashed by layoutGenerationHash() itself.
+constexpr uint32_t kFontFingerprint = 0x4C495432u /* "LIT2": bump on any layout change (fonts, run caps) */;
+Typography gTypo;
+
+uint8_t nearest(uint8_t v, const uint8_t* list, size_t n) {
+  uint8_t best = list[0];
+  for (size_t i = 0; i < n; ++i) {
+    const int d = static_cast<int>(list[i]) - v, bd = static_cast<int>(best) - v;
+    if ((d < 0 ? -d : d) < (bd < 0 ? -bd : bd)) best = list[i];
+  }
+  return best;
+}
 constexpr uint32_t kSyntheticBold = 0x80000000u;  // fingerprint bit: no real bold face
 
 TraceFn gTrace = nullptr;
@@ -125,6 +135,23 @@ struct BookReader::Impl {
 };
 
 void setTrace(TraceFn fn) { gTrace = fn; }
+
+Typography sanitize(const Typography& t) {
+  Typography out;
+  out.sizePx = nearest(t.sizePx, kSizePresets, sizeof kSizePresets);
+  out.lineSpacingPct = nearest(t.lineSpacingPct, kSpacingPresets, sizeof kSpacingPresets);
+  out.marginX = nearest(t.marginX, kMarginPresets, sizeof kMarginPresets);
+  return out;
+}
+
+uint8_t nextSize(uint8_t sizePx) {
+  for (size_t i = 0; i + 1 < sizeof kSizePresets; ++i)
+    if (kSizePresets[i] == sizePx) return kSizePresets[i + 1];
+  return kSizePresets[0];
+}
+
+void setTypography(const Typography& t) { gTypo = sanitize(t); }
+const Typography& typography() { return gTypo; }
 const char* lastError() { return gError; }
 
 namespace {
@@ -209,13 +236,13 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
   LayoutParams& lp = m.params;
   lp.pageWidth = kPageW;
   lp.pageHeight = kPageH;
-  lp.marginLeft = lp.marginRight = kMarginX;
+  lp.marginLeft = lp.marginRight = gTypo.marginX;
   lp.marginTop = kMarginTop;
   lp.marginBottom = kFooterH + 8;
-  lp.baseSizePx = kBodySizePx;
+  lp.baseSizePx = gTypo.sizePx;
   lp.language = lang;
   lp.font = &m.fonts;
-  lp.lineSpacingPct = 112;
+  lp.lineSpacingPct = gTypo.lineSpacingPct;
   lp.defaultAlign = TextAlign::Justify;
   lp.stylesheet = isText || !haveSheet ? nullptr : &m.sheet;
   lp.hyphenator = m.hyphenator.ready() ? &m.hyphenator : nullptr;

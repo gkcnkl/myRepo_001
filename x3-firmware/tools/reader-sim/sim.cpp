@@ -118,6 +118,12 @@ int main(int argc, char** argv) {
   mem.index = ix.data(), mem.indexSize = ix.size();
   mem.sheet = sh.empty() ? nullptr : sh.data(), mem.sheetSize = sh.size();
   Canvas canvas;
+  // 6th argument: body size in px (e.g. 30), 7th: line spacing %, 8th: margin.
+  reader::Typography typo;
+  if (argc > 6) typo.sizePx = static_cast<uint8_t>(atoi(argv[6]));
+  if (argc > 7) typo.lineSpacingPct = static_cast<uint8_t>(atoi(argv[7]));
+  if (argc > 8) typo.marginX = static_cast<uint8_t>(atoi(argv[8]));
+  reader::setTypography(typo);
   reader::BookReader r;
 #ifdef HEAPTRACK
   heaptrack_start();

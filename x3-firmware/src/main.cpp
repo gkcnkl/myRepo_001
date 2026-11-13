@@ -12,6 +12,7 @@
 #include <EInkDisplay.h>
 #include <InputManager.h>
 #include <PowerManager.h>
+#include <Preferences.h>
 #include <Rtc.h>
 #include <SDCardManager.h>
 #include <SPI.h>
@@ -430,6 +431,47 @@ void readerTrace(const char* step, int value) {
 }
 
 // Opens app.lib.books[app.libSelected]; on failure returns to the shelf.
+// Reading typography lives in NVS ("x3read"), applied before each open.
+void loadTypography() {
+  reader::Typography t;
+  Preferences p;
+  if (p.begin("x3read", true)) {
+    t.sizePx = p.getUChar("size", t.sizePx);
+    t.lineSpacingPct = p.getUChar("space", t.lineSpacingPct);
+    t.marginX = p.getUChar("margin", t.marginX);
+    p.end();
+  }
+  reader::setTypography(t);
+}
+
+void saveTypography(const reader::Typography& t) {
+  reader::setTypography(t);
+  Preferences p;
+  if (!p.begin("x3read", false)) return;
+  const reader::Typography& s = reader::typography();
+  p.putUChar("size", s.sizePx);
+  p.putUChar("space", s.lineSpacingPct);
+  p.putUChar("margin", s.marginX);
+  p.end();
+}
+
+bool openSelectedBook();
+
+// CONFIRM in the reader: next text size, same place in the book.
+void cycleFontSize() {
+  if (openBookIndex < 0) return;
+  const int index = openBookIndex;
+  closeBook();  // saves the position (a character offset: layout independent)
+  reader::Typography t = reader::typography();
+  t.sizePx = reader::nextSize(t.sizePx);
+  saveTypography(t);
+  app.libSelected = index;
+  char msg[48];
+  snprintf(msg, sizeof msg, "Yazı %u px · sayfalanıyor...", t.sizePx);
+  showReaderMessage(app.lib.books[index].title, msg);
+  if (!openSelectedBook()) app.screen = Screen::Library;
+}
+
 bool openSelectedBook() {
   const int index = app.libSelected;
   if (index < 0 || index >= app.lib.count) return false;
@@ -694,6 +736,20 @@ void startWifi() {
   server.on("/kitap-sil", HTTP_POST, handleDeleteBook);
   server.on("/ayarlar", HTTP_GET, handleGetSettings);
   server.on("/ayarlar", HTTP_POST, handlePostSettings);
+  server.on("/okuma", HTTP_GET, [] {
+    const reader::Typography& t = reader::typography();
+    char line[32];
+    snprintf(line, sizeof line, "%u\t%u\t%u", t.sizePx, t.lineSpacingPct, t.marginX);
+    server.send(200, "text/plain; charset=utf-8", line);
+  });
+  server.on("/okuma", HTTP_POST, [] {
+    reader::Typography t = reader::typography();
+    if (server.hasArg("size")) t.sizePx = static_cast<uint8_t>(server.arg("size").toInt());
+    if (server.hasArg("space")) t.lineSpacingPct = static_cast<uint8_t>(server.arg("space").toInt());
+    if (server.hasArg("margin")) t.marginX = static_cast<uint8_t>(server.arg("margin").toInt());
+    saveTypography(t);
+    server.send(200, "text/plain; charset=utf-8", "Kaydedildi: bir sonraki açılışta geçerli");
+  });
   server.onNotFound([] { server.send(404, "text/plain; charset=utf-8", "Yok"); });
   server.begin();
   wifiOn = true;
@@ -855,6 +911,7 @@ void setup() {
 
   rtc.begin();
   loadSyncSettings(syncSettings);
+  loadTypography();
   app.syncConfigured = syncSettings.configured();
   loadTasks();
   applySetTimeFile();
@@ -903,6 +960,7 @@ void loop() {
         render(true);  // back on the shelf with the error
         break;
       }
+      if (fx.nextFontSize) cycleFontSize();
       if (fx.pageDelta != 0) {
         const bool moved = fx.pageDelta > 0 ? bookReader.nextPage() : bookReader.prevPage();
         if (!moved) break;  // first/last page: nothing to redraw

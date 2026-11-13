@@ -70,8 +70,11 @@ görünenlerin notunu yazar ve 7 gün sonra depodan siler.
 - Raf: kitapların sırtları yan yana, başlık sırtta aşağıdan yukarıya. Sırt
   kalınlığı kitabın boyutuna göre; okunan kitaplarda ayraç kurdelesi var,
   seçili sırt siyah. Altta seçili kitabın adı, yazarı, yüzdesi ve başlama günü.
-- Okuyucu: EPUB (DRM'siz) ve TXT; Literata 21 px, iki yana yaslı, Türkçe ve
-  İngilizce heceleme. Altta bölüm adı, sayfa ve yüzde. Her kitabın kaldığı
+- Okuyucu: EPUB (DRM'siz) ve TXT; Literata (varsayılan 27 px), iki yana yaslı,
+  Türkçe ve İngilizce heceleme. Okurken **TAMAM** yazı boyutunu sırayla
+  değiştirir (21 · 24 · 27 · 30 · 34 px); okunan yer korunur. Boyut, satır
+  aralığı ve kenar boşluğu aktarım sayfasındaki **Okuma** bölümünden de seçilir
+  (NVS'de saklanır, her kombinasyonun sayfa önbelleği ayrıdır). Altta bölüm adı, sayfa ve yüzde. Her kitabın kaldığı
   yer, ilk açıldığı gün ve son okunma zamanı `/kitaplar/.x3/<id>/durum.txt`
   dosyasında; sayfa önbelleği de aynı klasörde (ilk açılışta bölüm başına
   birkaç saniye sürer).
@@ -92,7 +95,9 @@ her seferinde yeni, ekranda yazar) ve bir QR kod gösterir:
    528×792'ye küçültüp gri tonlu yapar, EPUB kurallarına uygun yeniden paketler
    (Dubliners: 2,9 MB → 249 KB). İnternet gerekmez (tarayıcının kendi
    CompressionStream/DecompressionStream'i).
-5. `brifing.txt` içeriğini düzenle, yapıştır ya da dosyadan yükle; **Kaydet**.
+5. **Okuma**: yazı boyutu, satır aralığı, kenar boşluğu; örnek paragraf ekran
+   ölçeğinde önizler. Bir sonraki kitap açılışında geçerli olur.
+6. `brifing.txt` içeriğini düzenle, yapıştır ya da dosyadan yükle; **Kaydet**.
    Cihaz SD karta yazar ve ekranı yeniler.
 
 Ev Wi-Fi şifresi gerekmez. GERİ ile ya da 10 dakika kullanılmazsa kapanır.
@@ -138,10 +143,10 @@ biçim anlaşılmamıştır (`2026-11-10 15:30` biçimi de kabul edilir).
 
 ## Hazır imajı yükleme (Windows)
 
-`release/x3-bugun-v0.11.0.bin` dosyasını esptool klasörüne kopyala, sonra:
+`release/x3-bugun-v0.12.0.bin` dosyasını esptool klasörüne kopyala, sonra:
 
 ```bash
-esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.11.0.bin
+esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.12.0.bin
 ```
 
 ## Fabrika firmware'ine dönüş
