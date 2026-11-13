@@ -1,2 +1,3 @@
 .pio/
 freeink-sdk
+__pycache__/
