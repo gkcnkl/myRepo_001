@@ -21,6 +21,7 @@ import html
 import re
 import sys
 import uuid
+import xml.dom.minidom
 import zipfile
 
 DROP = re.compile(r"(unsubscribe|abonelikten çık|manage (your )?subscription|view this post on the web|"
@@ -40,12 +41,52 @@ def parse(text):
     return meta, body
 
 
+def emphasis(s):
+    """**bold** and *italic* (also ***both*** and runs like *****) with the
+    tags always properly nested, so the XHTML stays well formed."""
+    parts = re.split(r"(\*+)", s)
+    out, stack = [], []
+    for i, part in enumerate(parts):
+        if not part.startswith("*") or not part:
+            out.append(part)
+            continue
+        before = parts[i - 1][-1:] if i > 0 else ""
+        after = parts[i + 1][:1] if i + 1 < len(parts) else ""
+        left_space = before == "" or before.isspace()
+        right_space = after == "" or after.isspace()
+        if left_space and right_space:  # a lone "*" between spaces is text
+            out.append(part)
+            continue
+        n = len(part)
+        closed = False
+        if stack and not left_space:  # closes what is open, innermost first
+            while n > 0 and stack:
+                need = 2 if stack[-1] == "b" else 1
+                if n < need:
+                    break
+                out.append("</%s>" % stack.pop())
+                n -= need
+                closed = True
+        # Opens unless the run sits inside a word ("5*3"), as in Markdown.
+        can_open = not right_space and (left_space or not before.isalnum() or closed)
+        while n > 0 and can_open:  # opens
+            if n >= 2 and "b" not in stack:
+                stack.append("b"); out.append("<b>"); n -= 2
+            elif "i" not in stack:
+                stack.append("i"); out.append("<i>"); n -= 1
+            else:
+                break
+        if n > 0:
+            out.append("*" * n)
+    while stack:
+        out.append("</%s>" % stack.pop())
+    return "".join(out)
+
+
 def inline(s):
     s = html.escape(s, quote=False)
-    s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
-    s = re.sub(r"(?<![*\w])\*(?!\s)(.+?)(?<!\s)\*(?!\w)", r"<i>\1</i>", s)
     s = re.sub(r"\[([^\]]+)\]\(https?://[^)]+\)", r"\1", s)  # keep link text, drop the URL
-    return s
+    return emphasis(s)
 
 
 def body_html(body):
@@ -117,6 +158,12 @@ def build(md, out_path):
                  'xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles>'
                  '<rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>'
                  '</rootfiles></container>\n')
+    # The device rejects malformed XHTML: refuse to write a broken book.
+    for name, data in (("content.opf", opf), ("nav.xhtml", nav), ("bulten.xhtml", chapter)):
+        try:
+            xml.dom.minidom.parseString(data.encode("utf-8"))
+        except Exception as e:  # noqa: BLE001 - any parser error means a broken book
+            raise SystemExit("md2epub: %s is not well-formed XML (%s)" % (name, e))
     with zipfile.ZipFile(out_path, "w") as z:
         z.writestr(zipfile.ZipInfo("mimetype"), "application/epub+zip", compress_type=zipfile.ZIP_STORED)
         for name, data in (("META-INF/container.xml", container), ("OEBPS/content.opf", opf),
