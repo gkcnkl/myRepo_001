@@ -355,3 +355,49 @@ size_t TaskList::serialize(char* buf, size_t bufSize) const {
 }
 
 void TaskList::loadSample() { parse(kSampleTasksFile, strlen(kSampleTasksFile)); }
+
+namespace {
+
+// "12.345" with Turkish thousands dots.
+void groupDigits(long v, char* out, size_t n) {
+  char raw[16];
+  snprintf(raw, sizeof raw, "%ld", v);
+  const size_t len = strlen(raw);
+  size_t o = 0;
+  for (size_t i = 0; i < len && o + 2 < n; ++i) {
+    if (i > 0 && (len - i) % 3 == 0) out[o++] = '.';
+    out[o++] = raw[i];
+  }
+  out[o] = '\0';
+}
+
+// 410 -> "6sa 50dk", 420 -> "7sa", 45 -> "45dk".
+void hoursMinutes(long minutes, char* out, size_t n) {
+  const long h = minutes / 60, mi = minutes % 60;
+  if (h == 0) snprintf(out, n, "%lddk", mi);
+  else if (mi == 0) snprintf(out, n, "%ldsa", h);
+  else snprintf(out, n, "%ldsa %lddk", h, mi);
+}
+
+}  // namespace
+
+void measureText(const Measure& m, char* out, size_t n) {
+  if (m.value < 0) {
+    snprintf(out, n, "veri yok");
+    return;
+  }
+  char v[20], g[20];
+  if (strcmp(m.unit, "süre") == 0) {
+    hoursMinutes(m.value, v, sizeof v);
+    hoursMinutes(m.goal, g, sizeof g);
+    snprintf(out, n, "%s / %s", v, g);
+    return;
+  }
+  groupDigits(m.value, v, sizeof v);
+  groupDigits(m.goal, g, sizeof g);
+  if (strcmp(m.unit, "₺") == 0) {  // the sign follows each amount
+    snprintf(out, n, "%s ₺ / %s ₺", v, g);
+    return;
+  }
+  snprintf(out, n, "%s / %s %s", v, g, m.unit);
+}

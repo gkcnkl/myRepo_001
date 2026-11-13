@@ -49,6 +49,10 @@ struct Measure {
   int8_t section; // -1 = before any heading
 };
 
+// Right-hand text of a measure bar: "3.728 / 10.000 adım", "veri yok", or,
+// for the unit "süre" (minutes), "6sa 50dk / 7sa"; for "₺", "800.000 ₺ / 800.000 ₺".
+void measureText(const Measure& m, char* out, size_t n);
+
 struct Weather {
   char kind[12] = "";  // gunes, parcali, bulut, sis, yagmur, kar, firtina
   int16_t min = 0;

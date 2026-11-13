@@ -472,6 +472,24 @@ static void testMeasures() {
   App a;
   a.tasks = t;
   CHECK(a.measuresHeight(0) == 2 * App::kMeasureH + 6);
+  char txt[48];
+  measureText(t.measures[2], txt, sizeof txt);
+  CHECK(strcmp(txt, "3.728 / 10.000 adım") == 0);
+  measureText(t.measures[1], txt, sizeof txt);
+  CHECK(strcmp(txt, "veri yok") == 0);
+  Measure s{"Süre", "süre", 395, 420, 0};
+  measureText(s, txt, sizeof txt);
+  CHECK(strcmp(txt, "6sa 35dk / 7sa") == 0);
+  s.value = 45;
+  s.goal = 480;
+  measureText(s, txt, sizeof txt);
+  CHECK(strcmp(txt, "45dk / 8sa") == 0);
+  Measure d{"Tutar", "₺", 1234567, 50000, 0};
+  measureText(d, txt, sizeof txt);
+  CHECK(strcmp(txt, "1.234.567 ₺ / 50.000 ₺") == 0);
+  char enc[8];
+  utf8ToFont("₺", enc, sizeof enc);
+  CHECK(static_cast<unsigned char>(enc[0]) == 0x8F && enc[1] == '\0');
 }
 
 static void testMeasuresOnlySection() {

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Convert a TTF/OTF font into an Adafruit GFX font header with Turkish letters.
 
-Printable ASCII 0x20-0x7E keeps its codes. The Turkish letters and · ° – are placed
-at 0x80-0x8E (see EXTRA below); src/text.cpp maps UTF-8 input to these codes.
+Printable ASCII 0x20-0x7E keeps its codes. The Turkish letters and · ° – ₺ are placed
+at 0x80-0x8F (see EXTRA below); src/text.cpp maps UTF-8 input to these codes.
 Glyphs are rendered with Pillow and thresholded to 1 bit.
 
 Usage: gen_font.py <font-file> <pixel-size> <symbol-name> <out.h> [options...]
@@ -13,7 +13,7 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-EXTRA = "ÇçĞğİıÖöŞşÜü·°–"  # codes 0x80.. in this order (src/text.cpp mirrors it)
+EXTRA = "ÇçĞğİıÖöŞşÜü·°–₺"  # codes 0x80.. in this order (src/text.cpp mirrors it)
 FIRST, LAST = 0x20, 0x80 + len(EXTRA) - 1
 
 
