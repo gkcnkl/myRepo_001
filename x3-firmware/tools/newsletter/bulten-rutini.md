@@ -6,7 +6,7 @@ Bülten kaynakları Composio'daki Gmail hesaplarından doğrudan okunur: desklet
 
 ---
 
-Her sabah çalışan bülten görevi. desklettershq ve gkgeziyor Gmail kutularındaki bültenleri EN ESKİDEN başlayarak sırayla e-kitaba çevirip Xteink X3 okuyucunun kitaplığına koyar; cihazda aynı anda en fazla 5 okunmamış bülten bulunur, biri bitince sıradaki eklenir. Cihazda sonuna kadar okunan bültenler için Beyin kasasına özetli not hazırlar; notu yazılmış bültenleri 7 gün sonra kitaplıktan kaldırır. Yeni oturum, hafızan yok. Türkçe yaz; em dash (uzun tire) hiçbir yerde kullanma. Zaman dilimi Europe/Istanbul. Onay bekleme, soru sorma.
+Her sabah çalışan bülten görevi. desklettershq ve gkgeziyor Gmail kutularındaki bültenleri EN ESKİDEN başlayarak sırayla e-kitaba çevirip Xteink X3 okuyucunun kitaplığına koyar; cihazda aynı anda en fazla 5 okunmamış bülten bulunur, biri bitince sıradaki eklenir. Cihazda sonuna kadar okunan bültenler için Beyin kasasına özetli not hazırlar ve o bültenin mailini çöp kutusuna taşır; notu yazılmış bültenleri 7 gün sonra kitaplıktan kaldırır. Yeni oturum, hafızan yok. Türkçe yaz; em dash (uzun tire) hiçbir yerde kullanma. Zaman dilimi Europe/Istanbul. Onay bekleme, soru sorma.
 
 DEPO: gkcnkl/x3-sync (özel, dal main). Rutinin ayarlarında depo olarak seçilidir; klonu çalışma klasöründe (ör. /home/user/x3-sync) bul. Klon yoksa ve mcp__claude-code-remote__add_repo aracı varsa onunla {owner: "gkcnkl", repo: "x3-sync", access: "push"} ekle ve söylediği klonlama komutunu çalıştır. Depoya erişilemezse hiçbir şeye dokunma, sorunu tek satırla bildir (PushNotification yoksa sohbete yaz) ve bitir. Depodaki README.md düzeni anlatır. Dosyalar:
 - bultenler.txt: kuyruk ve kayıt defteri. Satır biçimi: "kimlik | dosya | eklendi | not yazıldı | silindi" (tarihler YYYY-MM-DD, boşsa "-"). kimlik = <hesap>-<gmail_id>, hesap: dl = desklettershq, gk = gkgeziyor, gc = gokcenkul. Bülten olmayan mailler "kimlik | atlandi | <tarih> | - | -" satırıyla kayıtlıdır. "# imlec dl: YYYY/MM/DD" ve "# imlec gk: YYYY/MM/DD" satırları o hesapta incelenen en yeni mailin tarihidir. Diğer "#" satırları açıklamadır.
@@ -15,7 +15,7 @@ DEPO: gkcnkl/x3-sync (özel, dal main). Rutinin ayarlarında depo olarak seçili
 - cihaz.txt: cihazın yazdığı durum. Kitap satırları: "# kitap | %<yüzde> | <okunuyor|bitti|baslanmadi> | <son okuma> | <dosya>". Dosya yoksa tüm bültenler okunmamış sayılır ve adım B atlanır.
 - tools/md2epub.py: dönüştürücü.
 
-GMAIL (Composio, YALNIZ OKUMA): Hesaplar: desklettershq@gmail.com (Composio hesap kimliği gmail_rib-narra, kısaltma dl), gkgeziyor@gmail.com (gmail_soft-tharf, gk), gokcenkul@gmail.com (gmail_rimu-horror, gc). Araçlar: GMAIL_LIST_THREADS (query, max_results, page_token), GMAIL_FETCH_MESSAGE_BY_THREAD_ID. Hesap kimlikleri değişmişse COMPOSIO_MANAGE_CONNECTIONS ile gmail hesaplarını listele ve e-posta adresine göre eşle. Gmail'de hiçbir şeyi değiştirme: etiket, okundu, silme, taşıma YOK. Claude Docs bağlayıcısı yoksa adım B'yi atla ve raporda belirt.
+GMAIL (Composio, YALNIZ OKUMA): Hesaplar: desklettershq@gmail.com (Composio hesap kimliği gmail_rib-narra, kısaltma dl), gkgeziyor@gmail.com (gmail_soft-tharf, gk), gokcenkul@gmail.com (gmail_rimu-horror, gc). Araçlar: GMAIL_LIST_THREADS (query, max_results, page_token), GMAIL_FETCH_MESSAGE_BY_THREAD_ID. Hesap kimlikleri değişmişse COMPOSIO_MANAGE_CONNECTIONS ile gmail hesaplarını listele ve e-posta adresine göre eşle. Gmail'de TEK izinli değişiklik adım 8e'dir (notu yazılmış bültenin mailini çöp kutusuna taşımak); bunun dışında etiket, okundu, silme, taşıma YOK. Claude Docs bağlayıcısı yoksa adım B'yi atla ve raporda belirt.
 
 A. KUYRUĞU DOLDUR
 1. Boş yer hesapla: bultenler.txt'de dosya alanı "atlandi" olmayan, silindi alanı "-" olan ve cihaz.txt'de durumu "bitti" OLMAYAN satırlar okunmamış sayılır. Boş yer = 5 - okunmamış sayısı. Boş yer 0 ya da daha azsa A'yı atla.
@@ -73,6 +73,7 @@ En fazla 3 kısa alıntı, metinden birebir, tırnak içinde. Metinde verilen ka
 
    "###" satırında baslik içindeki / \ : * ? " < > | karakterlerini "-" ile değiştir. Not içindeki başlıklar "#" ve "##" kalır; "###" kullanma. Özet uydurma: metinde olmayan bilgi, sayı ya da kaynak ekleme.
    d. Dokümanı yeniden oku, kaydın yerinde olduğunu doğrula; doğrulanınca bultenler.txt'de o satırın "not yazıldı" alanına bugünü yaz. "## Son alan taraması" ve "## 3GPP sürüm durumu" bölümlerine dokunma.
+   e. Not doğrulandıktan sonra, yalnız o bültenin mailini kendi hesabında (kimlikteki hesap: dl, gk ya da gc) Composio GMAIL_MOVE_TO_TRASH ile çöp kutusuna taşı (kalıcı silme YOK; Gmail 30 gün sonra kendisi boşaltır). Mail zaten çöpteyse ya da bulunamazsa geç. Başka hiçbir maile dokunma.
 
 C. TEMİZLİK
 9. bultenler.txt'de "not yazıldı" tarihi bugünden en az 7 gün önce olan ve "silindi" alanı "-" olan her satır için: kitaplar/<dosya> ve kaynak/<kimlik>.md dosyalarını git rm ile sil ve "silindi" alanına bugünü yaz. Satırı defterden SİLME.
@@ -80,6 +81,6 @@ C. TEMİZLİK
 D. KAYDET
 10. Değişiklik varsa tek commit at ("Bültenler: +N yeni, N atlandı, N not, N silindi") ve doğrudan main dalına push et (git push origin HEAD:main). Push reddedilirse git pull --rebase origin main yapıp bir kez daha dene (cihaz cihaz.txt'yi değiştirmiş olabilir). cihaz.txt ve brifing.txt dosyalarına ASLA yazma.
 
-Kurallar: Depoda yalnız bultenler.txt, kitaplar/ ve kaynak/ altına dokun. Gmail'de yalnız oku. Yorum, öneri yazma. Bir bülten başarısız olursa diğerleriyle devam et.
+Kurallar: Depoda yalnız bultenler.txt, kitaplar/ ve kaynak/ altına dokun. Gmail'de yalnız oku; tek istisna adım 8e. Yorum, öneri yazma. Bir bülten başarısız olursa diğerleriyle devam et.
 
-RAPOR: En az bir bülten eklendiyse, not hazırlandıysa ya da silindiyse PushNotification ile <routine_summary> içinde tek satır: eklenen bültenlerin başlıkları, not hazırlananlar, silinenler, kuyrukta bekleyen tahmini sayı, hata varsa hangisi ve neden. Yalnız "atlandi" kaydı olduysa ya da hiçbir şey değişmediyse bildirim gönderme, sohbete kısa özet yaz.
+RAPOR: En az bir bülten eklendiyse, not hazırlandıysa ya da silindiyse PushNotification ile <routine_summary> içinde tek satır: eklenen bültenlerin başlıkları, not hazırlananlar (ve çöpe taşınan mailleri), kitaplıktan silinenler, kuyrukta bekleyen tahmini sayı, hata varsa hangisi ve neden. Yalnız "atlandi" kaydı olduysa ya da hiçbir şey değişmediyse bildirim gönderme, sohbete kısa özet yaz.
