@@ -175,7 +175,7 @@ int16_t countCell(Adafruit_GFX& g, const char* value, const char* caption, int16
 
 // Masthead: eyebrow, serif title, counts on the right, 2px rule, dateline.
 void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* title, bool showCounts,
-              bool showSubtitle = true) {
+              bool showSubtitle = true, const char* dateline = nullptr) {
   label(g, eyebrow, kM, 26);
 
   int16_t countsLeft = kW - kM;
@@ -195,7 +195,10 @@ void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* 
 
   // Dateline: date in caps, then the subtitle.
   char date[64];
-  if (app.dateText[0]) {
+  if (dateline != nullptr && dateline[0]) {
+    Encoded d(dateline, true);
+    snprintf(date, sizeof date, "%s", d.s);
+  } else if (app.dateText[0]) {
     Encoded d(app.dateText, true);
     snprintf(date, sizeof date, "%s", d.s);
   } else {
@@ -269,7 +272,17 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
   g.fillScreen(0);
   const TaskList& t = app.tasks;
 
-  masthead(g, app, t.eyebrow[0] ? t.eyebrow : "Günlük brifing", t.title[0] ? t.title : "Bugün", true);
+  // The title is today's date ("13 Kasım") with the weekday on the dateline;
+  // the briefing's own title is only the fallback while the clock is unset.
+  const char* comma = strchr(app.dateText, ',');
+  if (comma != nullptr) {
+    const char* dayMonth = comma + 1;
+    while (*dayMonth == ' ') ++dayMonth;
+    char wd[24];
+    masthead(g, app, t.eyebrow[0] ? t.eyebrow : "Günlük brifing", dayMonth, true, true, weekdayOf(app, wd, sizeof wd));
+  } else {
+    masthead(g, app, t.eyebrow[0] ? t.eyebrow : "Günlük brifing", t.title[0] ? t.title : "Bugün", true);
+  }
   if (t.indicatorCount > 0) indicatorGrid(g, t);
 
   if (t.count == 0) {
