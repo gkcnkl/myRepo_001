@@ -48,6 +48,35 @@ int main(int argc, char** argv) {
   app.batteryPercent = 84;
 
   { Canvas c; ui::drawList(c, app, false); c.save(out, "1-list"); }
+  {  // the fewest screens that show every row while paging down: walk the
+     // selection down, then pick, from each saved screen, the furthest later
+     // screen that still starts no lower than where the saved one ended
+    static App states[64];
+    int n = 0;
+    App walk = app;
+    walk.selected = 0;
+    walk.scroll = 0;
+    for (; n < 64; ++n) {
+      states[n] = walk;
+      if (walk.selected >= walk.tasks.count - 1) { ++n; break; }
+      walk.onButton(Button::Down, 0);
+    }
+    int page = 1, at = 0;
+    while (true) {
+      Canvas c;
+      ui::drawList(c, states[at], false);
+      char name[32];
+      snprintf(name, sizeof name, "page-%d", page++);
+      c.save(out, name);
+      if (at >= n - 1) break;
+      const int end = states[at].scroll + states[at].rowsFrom(states[at].scroll);
+      int next = at + 1;
+      for (int k = at + 1; k < n; ++k)
+        if (states[k].scroll <= end) next = k;
+      if (states[next].scroll == states[at].scroll) next = n - 1;  // nothing new before the end
+      at = next;
+    }
+  }
   {  // the end of the list, selection on its last row (e.g. a measures block)
     App end = app;
     end.selected = 0;
