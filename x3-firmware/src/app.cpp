@@ -119,7 +119,12 @@ Effects App::onButton(Button b, uint32_t nowMs) {
         fx.redraw = fx.fullRefresh = fx.deepClean = true;
         break;
       }
-      if (b == Button::Left) {
+      if (b == Button::Left && syncConfigured) {
+        // Sync straight over the saved home/phone Wi-Fi: no hotspot needed.
+        fx.syncNow = fx.redraw = true;
+        break;
+      }
+      if (b == Button::Left) {  // not set up yet: open the transfer page
         wifiReturn = Screen::List;
         screen = Screen::Wifi;
         wifiStatus[0] = '\0';
@@ -136,7 +141,16 @@ Effects App::onButton(Button b, uint32_t nowMs) {
         keepSelectionVisible();
         fx.redraw = true;
       } else if (b == Button::Confirm) {
-        tasks.items[selected].done = !tasks.items[selected].done;
+        // Open -> done -> cancelled -> open.
+        Task& t = tasks.items[selected];
+        if (t.done) {
+          t.done = false;
+          t.cancelled = true;
+        } else if (t.cancelled) {
+          t.cancelled = false;
+        } else {
+          t.done = true;
+        }
         fx.redraw = fx.save = true;
       } else if (b == Button::Right) {
         screen = Screen::Focus;
@@ -202,6 +216,7 @@ Effects App::onButton(Button b, uint32_t nowMs) {
       if (b == Button::Confirm) {
         if (focusTask >= 0 && focusTask < tasks.count) {
           tasks.items[focusTask].done = true;
+          tasks.items[focusTask].cancelled = false;
           fx.save = true;
         }
         screen = Screen::List;

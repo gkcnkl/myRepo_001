@@ -11,6 +11,7 @@
 //   ## Günün akışı                         section heading (up to 4)
 //   [x] 09:15-10:00 | Ekip toplantısı      done task with a time column
 //   [ ] Alt katı temizle                   open task, no time
+//   [-] 13:30-14:00 | İptal edilen iş      cancelled (also "[~]")
 //   plain line                             open task
 //   # comment / blank                      ignored
 struct Task {
@@ -20,6 +21,7 @@ struct Task {
   char time[kMaxTime];  // "" when the line has no "time | text" part
   int8_t section;       // index into TaskList::sections, -1 = none
   bool done;
+  bool cancelled;       // won't be done today; never both done and cancelled
 };
 
 struct Indicator {
@@ -44,6 +46,8 @@ struct TaskList {
   int count = 0;
 
   int doneCount() const;
+  // Tasks that still count (not cancelled): the "x / n" total.
+  int activeCount() const;
   // Parses file content (need not be NUL-terminated). Extras are dropped.
   void parse(const char* data, size_t len);
   // Writes the file content back; returns bytes written (excluding NUL),

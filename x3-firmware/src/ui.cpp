@@ -186,7 +186,7 @@ void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* 
       countsLeft = countCell(g, v, app.charging ? "şarj" : "pil", countsLeft) - 22;
     }
     char v[16];
-    snprintf(v, sizeof v, "%d/%d", app.tasks.doneCount(), app.tasks.count);
+    snprintf(v, sizeof v, "%d/%d", app.tasks.doneCount(), app.tasks.activeCount());
     countsLeft = countCell(g, v, "tamam", countsLeft) - 18;
   }
   text(g, &Play46, title, kM - 2, 82, countsLeft - kM);
@@ -244,9 +244,15 @@ void indicatorGrid(Adafruit_GFX& g, const TaskList& t) {
   hairline(g, kM, bottom, kW - 2 * kM);
 }
 
-void checkCircle(Adafruit_GFX& g, int16_t cx, int16_t cy, bool done, uint16_t ink) {
+void checkCircle(Adafruit_GFX& g, int16_t cx, int16_t cy, bool done, uint16_t ink, bool cancelled = false) {
   g.drawCircle(cx, cy, 9, ink);
   if (done) g.fillCircle(cx, cy, 4, ink);
+  if (cancelled) {  // an "x" inside the ring
+    g.drawLine(cx - 4, cy - 4, cx + 4, cy + 4, ink);
+    g.drawLine(cx - 4, cy + 4, cx + 4, cy - 4, ink);
+    g.drawLine(cx - 3, cy - 4, cx + 4, cy + 3, ink);
+    g.drawLine(cx - 4, cy + 3, cx + 3, cy - 4, ink);
+  }
 }
 
 const char* weekdayOf(const App& app, char* buf, size_t n) {
@@ -289,7 +295,7 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
     const uint16_t ink = sel ? 0 : 1;
     if (sel) g.fillRect(kM - 10, y + 1, kW - 2 * kM + 20, App::kRowH - 2, 1);
 
-    checkCircle(g, kM + 9, y + App::kRowH / 2, task.done, ink);
+    checkCircle(g, kM + 9, y + App::kRowH / 2, task.done, ink, task.cancelled);
     int16_t tx = kM + 30;
     if (anyTime) {
       if (task.time[0]) text(g, &Play18, task.time, tx, y + 29, kTimeColW - 8, ink);
@@ -298,7 +304,8 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
     Encoded e(task.text);
     fitWidth(g, &InterMed18, e.s, kW - kM - tx);
     drawEnc(g, &InterMed18, e.s, tx, y + 29, ink);
-    if (task.done) g.drawFastHLine(tx, y + 23, widthOf(g, &InterMed18, e.s), ink);
+    if (task.done || task.cancelled) g.drawFastHLine(tx, y + 23, widthOf(g, &InterMed18, e.s), ink);
+    if (task.cancelled) g.drawFastHLine(tx, y + 24, widthOf(g, &InterMed18, e.s), ink);  // bolder: cancelled
     if (!sel) hairline(g, kM, y + App::kRowH - 1, kW - 2 * kM);
     y += App::kRowH;
   }
@@ -306,7 +313,7 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
 
   char wd[24];
   char done[24];
-  snprintf(done, sizeof done, "%d / %d tamamlandı", t.doneCount(), t.count);
+  snprintf(done, sizeof done, "%d / %d tamamlandı", t.doneCount(), t.activeCount());
   if (sleeping) {
     g.fillRect(0, kBarTop, kW, kH - kBarTop, 1);
     label(g, "Uyuyor", kM, kBarTop + 28, 0, 0);
@@ -315,7 +322,8 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
     return;
   }
   const char* hint = t.count == 0 ? "GERİ tazele  ·  GÜÇ uyku"
-                                  : "TAMAM işaretle  ·  SAĞ odak  ·  GERİ tazele  ·  GÜÇ uyku";
+                                  : app.syncConfigured ? "TAMAM bitti/iptal  ·  SOL eşitle  ·  SAĞ odak"
+                                                    : "TAMAM bitti/iptal  ·  SOL Wi-Fi  ·  SAĞ odak";
   const char* right = !app.sdAvailable ? "SD kart yok" : app.syncNote[0] ? app.syncNote : weekdayOf(app, wd, sizeof wd);
   statusBar(g, done, right, hint);
 }

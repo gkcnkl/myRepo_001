@@ -955,6 +955,7 @@ void loop() {
         if (syncSettings.configured() && autoSyncDue()) syncAndRestart(app.screen);
         restartInto(app.screen, false, nullptr);
       }
+      if (fx.syncNow && !fx.stopWifi) syncAndRestart(app.screen);  // SOL on the list
       if (fx.startWifi) startWifi();
       if (fx.save) saveTasks();
       if (libraryDirty && app.screen == Screen::Library) scanLibrary();

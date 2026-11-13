@@ -7,9 +7,9 @@
 #include "library.h"
 #include "tasks.h"
 
-// Marks tasks in `fresh` (just downloaded) as done when the same task
-// (time + text) is done in `local`. Done marks are never lost; returns how
-// many tasks were carried over.
+// Carries the device's marks into `fresh` (just downloaded): a task (same
+// time + text) done or cancelled in `local` stays so. A task done on the
+// server stays done. Returns how many marks were carried over.
 int mergeDoneMarks(TaskList& fresh, const TaskList& local);
 
 // Standard base64 (no line breaks). Returns the output length, or 0 when

@@ -256,6 +256,12 @@ static void testWifiFlow() {
   fx = b.onButton(Button::Left, 2000);
   CHECK(b.onButton(Button::Power, 3000).stopWifi);
 
+  App synced;  // set up: SOL syncs directly, no hotspot
+  synced.tasks.loadSample();
+  synced.syncConfigured = true;
+  fx = synced.onButton(Button::Left, 0);
+  CHECK(fx.syncNow && !fx.startWifi && synced.screen == Screen::List);
+
   App empty;  // works with an empty list too
   CHECK(empty.onButton(Button::Left, 0).startWifi);
   CHECK(!empty.onButton(Button::Confirm, 0).syncNow);  // sync not configured: nothing
@@ -420,6 +426,40 @@ static void testSyncLogic() {
   CHECK(back.count == 3 && back.items[0].done && back.items[2].done);
 }
 
+static void testCancel() {
+  TaskList t;
+  const char* f = "## A\n[ ] 09:00 | Toplantı\n[x] Rapor\n[-] 11:00 | İptal olan\n[~] Eski iptal\n";
+  t.parse(f, strlen(f));
+  CHECK(t.count == 4 && t.items[2].cancelled && !t.items[2].done && t.items[3].cancelled);
+  CHECK(t.doneCount() == 1 && t.activeCount() == 2);
+  char out[512];
+  t.serialize(out, sizeof out);
+  CHECK(strstr(out, "[-] 11:00 | İptal olan\n") != nullptr && strstr(out, "[-] Eski iptal\n") != nullptr);
+
+  // CONFIRM cycles open -> done -> cancelled -> open.
+  App a;
+  a.tasks = t;
+  a.selected = 0;
+  a.onButton(Button::Confirm, 0);
+  CHECK(a.tasks.items[0].done && !a.tasks.items[0].cancelled);
+  Effects fx = a.onButton(Button::Confirm, 0);
+  CHECK(!a.tasks.items[0].done && a.tasks.items[0].cancelled && fx.save);
+  a.onButton(Button::Confirm, 0);
+  CHECK(!a.tasks.items[0].done && !a.tasks.items[0].cancelled);
+
+  // Device marks survive a fresh download; a server "done" wins.
+  TaskList local, fresh;
+  const char* l = "[-] 09:00 | Toplantı\n[x] Rapor\n[-] Okuma\n";
+  const char* r = "[ ] 09:00 | Toplantı\n[ ] Rapor\n[x] Okuma\n[ ] Yeni\n";
+  local.parse(l, strlen(l));
+  fresh.parse(r, strlen(r));
+  CHECK(mergeDoneMarks(fresh, local) == 2);
+  CHECK(fresh.items[0].cancelled && !fresh.items[0].done);
+  CHECK(fresh.items[1].done && !fresh.items[1].cancelled);
+  CHECK(fresh.items[2].done && !fresh.items[2].cancelled);
+  CHECK(!fresh.items[3].done && !fresh.items[3].cancelled);
+}
+
 static void testPickNetwork() {
   const char* saved[2] = {"Ev", "GKphone"};
   const char* seen[] = {"Komsu", "GKphone", "Ev", "Ev"};
@@ -565,6 +605,7 @@ int main() {
   testSyncLogic();
   testBookSync();
   testPickNetwork();
+  testCancel();
   testLibraryModel();
   testShelfLayout();
   testLibraryNavigation();

@@ -13,10 +13,10 @@ güncellenir. Uykuda ekranda bir kütüphane ödünç kartı durur.
 | Ekran        | Tuş              | Ne yapar                              |
 |--------------|------------------|---------------------------------------|
 | Liste        | YUKARI / AŞAĞI   | Görev seç                             |
-| Liste        | TAMAM            | Bitti / bitmedi işaretle (SD'ye yazar)|
+| Liste        | TAMAM            | Açık → bitti → iptal → açık (SD'ye yazar; iptal `[-]`, sayaca girmez)|
 | Liste        | SAĞ              | Seçili görev için 25 dk odak başlat   |
 | Liste        | GERİ             | Kitaplık (raf)                        |
-| Liste        | SOL              | Wi-Fi aktarım ekranı                  |
+| Liste        | SOL              | Eşitleme ayarlıysa hemen eşitle (kayıtlı ev/telefon Wi-Fi'ı); ayarlı değilse Wi-Fi aktarım ekranı |
 | Liste        | GÜÇ              | Uyku (3 dk dokunulmazsa kendiliğinden)|
 | Kitaplık     | SOL / SAĞ        | Önceki / sonraki kitap                |
 | Kitaplık     | YUKARI / AŞAĞI   | Üst / alt raf                         |
@@ -34,13 +34,18 @@ Tuşların cihazdaki yerleri: [docs-hardware.md](docs-hardware.md).
 
 ## GitHub ile eşitleme (Sabah Brifingi)
 
-Cihaz uyanınca (son eşitlemeden en az 30 dakika geçtiyse) ya da Wi-Fi
-ekranında TAMAM'a basınca ev Wi-Fi'ına bağlanır ve özel bir GitHub deposuyla
+Cihaz uyanınca (son eşitlemeden en az 30 dakika geçtiyse) ya da listede SOL'a
+basınca (cihazın kendi Wi-Fi ağı açılmadan) kayıtlı Wi-Fi'a bağlanır ve özel bir GitHub deposuyla
 eşitlenir (iki ağ kaydedilebilir: ev ve telefon; cihaz çevrede hangisi
 varsa, ikisi de varsa sinyali güçlü olana bağlanır):
 
-- `brifing.txt` (Sabah Brifingi rutini yazar) indirilir; cihazda tamamlanan
-  görevler (aynı saat + metin) yeni listede de tamamlanmış kalır.
+- `brifing.txt` (Brifing → X3 rutini yazar) indirilir; cihazda tamamlanan ya
+  da iptal edilen görevler (aynı saat + metin) yeni listede de öyle kalır.
+  Rutin `cihaz.txt`'deki işaretleri Superfocus'a geri yazar: tamamlanan
+  görev/blok tamamlanır, iptal edilen görev o günün planından çıkar ve notuna
+  "İptal edildi (X3 · tarih)" düşülür (kendi bloğu silinir, başkasının
+  etkinliğine dokunulmaz). Aktarım sayfası (cihazın kendi Wi-Fi'ı) yalnız
+  ayar değiştirmek ve kitap yüklemek için gerekir: kitaplıkta "+ Kitap ekle".
 - Deponun `kitaplar/` klasörü SD karttaki `/kitaplar`'a yansıtılır: yeni ya
   da değişen `.epub`/`.txt` dosyaları iner (eşitleme başına en çok 5, dosya
   başına en çok 8 MB), depodan silinen ve depodan gelmiş kitaplar cihazdan da
@@ -146,17 +151,17 @@ biçim anlaşılmamıştır (`2026-11-10 15:30` biçimi de kabul edilir).
 
 **Güncelleme** (cihazda zaten bu yazılım varsa): yalnız uygulamayı yazar;
 eşitleme ayarları, Wi-Fi şifreleri ve okuma ayarları (NVS, 0x9000) korunur.
-`release/x3-bugun-v0.13.0-guncelleme.bin` dosyasını esptool klasörüne kopyala:
+`release/x3-bugun-v0.14.0-guncelleme.bin` dosyasını esptool klasörüne kopyala:
 
 ```
-.\esptool --port COM14 --baud 921600 write-flash 0x10000 x3-bugun-v0.13.0-guncelleme.bin
+.\esptool --port COM14 --baud 921600 write-flash 0x10000 x3-bugun-v0.14.0-guncelleme.bin
 ```
 
 **İlk kurulum** (orijinal yazılımdan geçerken): tek parça imaj 0x0'dan yazılır
 ve NVS'yi de siler, ayarlar yeniden girilir.
 
 ```
-.\esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.13.0-ilk-kurulum.bin
+.\esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.14.0-ilk-kurulum.bin
 ```
 
 ## Fabrika firmware'ine dönüş

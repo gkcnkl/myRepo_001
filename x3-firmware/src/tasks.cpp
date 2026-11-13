@@ -3,7 +3,7 @@
 #include <string.h>
 
 const char kSampleTasksFile[] =
-    "# Günün brifingi. Her satır bir görev; [x] tamamlanmış demek.\n"
+    "# Günün brifingi. Her satır bir görev; [x] tamamlanmış, [-] iptal demek.\n"
     "# Ayrıntılar: README, \"brifing.txt\" bölümü.\n"
     "baslik: Bugün\n"
     "alt: Örnek dosya, SD karttan düzenle\n"
@@ -14,6 +14,12 @@ const char kSampleTasksFile[] =
     "[ ] 18:00-19:00 | Kitaptan bir bölüm oku\n"
     "## Bugün due\n"
     "[ ] Şirket toplantısına hazırlan\n";
+
+int TaskList::activeCount() const {
+  int n = 0;
+  for (int i = 0; i < count; ++i) n += items[i].cancelled ? 0 : 1;
+  return n;
+}
 
 int TaskList::doneCount() const {
   int n = 0;
@@ -140,13 +146,16 @@ void TaskList::parse(const char* data, size_t len) {
     if (count >= kMax) continue;
     bool done = false;
     if (startsWith(line, n, "- ")) { line += 2; n -= 2; }
+    bool cancelled = false;
     if (startsWith(line, n, "[x]") || startsWith(line, n, "[X]")) { done = true; line += 3; n -= 3; }
+    else if (startsWith(line, n, "[-]") || startsWith(line, n, "[~]")) { cancelled = true; line += 3; n -= 3; }
     else if (startsWith(line, n, "[ ]")) { line += 3; n -= 3; }
     trim(line, n);
     if (n == 0) continue;
 
     Task& t = items[count++];
     t.done = done;
+    t.cancelled = cancelled;
     t.section = static_cast<int8_t>(currentSection);
     t.time[0] = '\0';
     size_t tl, rn;
@@ -166,7 +175,7 @@ size_t TaskList::serialize(char* buf, size_t bufSize) const {
   auto put = [&](const char* s) {
     while (*s && o + 1 < bufSize) buf[o++] = *s++;
   };
-  put("# Günün brifingi. Her satır bir görev; [x] tamamlanmış demek.\n");
+  put("# Günün brifingi. Her satır bir görev; [x] tamamlanmış, [-] iptal demek.\n");
   if (eyebrow[0]) { put("ust: "); put(eyebrow); put("\n"); }
   if (title[0]) { put("baslik: "); put(title); put("\n"); }
   if (subtitle[0]) { put("alt: "); put(subtitle); put("\n"); }
@@ -187,7 +196,7 @@ size_t TaskList::serialize(char* buf, size_t bufSize) const {
       put(sections[section]);
       put("\n");
     }
-    put(t.done ? "[x] " : "[ ] ");
+    put(t.done ? "[x] " : (t.cancelled ? "[-] " : "[ ] "));
     if (t.time[0]) { put(t.time); put(" | "); }
     put(t.text);
     put("\n");
