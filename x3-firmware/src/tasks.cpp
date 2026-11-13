@@ -25,7 +25,7 @@ int TaskList::measuresIn(int sec) const {
 
 int TaskList::activeCount() const {
   int n = 0;
-  for (int i = 0; i < count; ++i) n += items[i].cancelled ? 0 : 1;
+  for (int i = 0; i < count; ++i) n += (items[i].cancelled || items[i].placeholder) ? 0 : 1;
   return n;
 }
 
@@ -224,6 +224,7 @@ void TaskList::parse(const char* data, size_t len) {
     Task& t = items[count++];
     t.done = done;
     t.cancelled = cancelled;
+    t.placeholder = false;
     t.section = static_cast<int8_t>(currentSection);
     t.time[0] = '\0';
     size_t tl, rn;
@@ -234,6 +235,19 @@ void TaskList::parse(const char* data, size_t len) {
     } else {
       copyText(t.text, sizeof t.text, line, n);
     }
+  }
+  // A section that has measures but no tasks still needs a row to hang its
+  // heading and bars on: add a placeholder at the end.
+  for (int sec = 0; sec < sectionCount && count < kMax; ++sec) {
+    if (measuresIn(sec) == 0) continue;
+    bool has = false;
+    for (int k = 0; k < count && !has; ++k) has = items[k].section == sec;
+    if (has) continue;
+    Task& t = items[count++];
+    t.text[0] = t.time[0] = '\0';
+    t.section = static_cast<int8_t>(sec);
+    t.done = t.cancelled = false;
+    t.placeholder = true;
   }
 }
 
@@ -278,6 +292,7 @@ size_t TaskList::serialize(char* buf, size_t bufSize) const {
       put("\n");
       putMeasures(section);
     }
+    if (t.placeholder) continue;  // its heading and measures are written above
     put(t.done ? "[x] " : (t.cancelled ? "[-] " : "[ ] "));
     if (t.time[0]) { put(t.time); put(" | "); }
     put(t.text);

@@ -48,6 +48,14 @@ int main(int argc, char** argv) {
   app.batteryPercent = 84;
 
   { Canvas c; ui::drawList(c, app, false); c.save(out, "1-list"); }
+  {  // the end of the list, selection on its last row (e.g. a measures block)
+    App end = app;
+    end.selected = 0;
+    while (end.selected < end.tasks.count - 1) end.onButton(Button::Down, 0);
+    Canvas c;
+    ui::drawList(c, end, false);
+    c.save(out, "1b-list-end");
+  }
 
   app.onButton(Button::Right, 0);  // focus on task 1
   { Canvas c; ui::drawFocus(c, app, 7 * 60 * 1000); c.save(out, "2-focus"); }

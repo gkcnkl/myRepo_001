@@ -443,6 +443,30 @@ static void testMeasures() {
   CHECK(a.measuresHeight(0) == 2 * App::kMeasureH + 6);
 }
 
+static void testMeasuresOnlySection() {
+  TaskList t;
+  const char* f = "## Günün akışı\n[ ] 09:00 | Toplantı\n## Alışkanlıklar\nolcu: Uyku | 410 | 420 | dk\nolcu: Adım | 5 | 10 | adım\n";
+  t.parse(f, strlen(f));
+  CHECK(t.count == 2 && t.items[1].placeholder && t.items[1].section == 1);
+  CHECK(t.activeCount() == 1 && t.doneCount() == 0);
+  char out[512];
+  t.serialize(out, sizeof out);
+  CHECK(strstr(out, "## Alışkanlıklar\nolcu: Uyku | 410 | 420 | dk\nolcu: Adım | 5 | 10 | adım\n") != nullptr);
+  CHECK(strstr(out, "[ ] \n") == nullptr);  // no empty task line
+  App a;
+  a.tasks = t;
+  a.selected = 0;
+  a.onButton(Button::Down, 0);
+  CHECK(a.selected == 1);
+  Effects fx = a.onButton(Button::Confirm, 0);
+  CHECK(!a.tasks.items[1].done && !a.tasks.items[1].cancelled && !fx.save);
+  a.onButton(Button::Right, 0);
+  CHECK(a.screen == Screen::List);  // no focus timer on the measures block
+  TaskList again;
+  again.parse(out, strlen(out));
+  CHECK(again.count == 2 && again.items[1].placeholder && again.measureCount == 2);
+}
+
 static void testSortFinished() {
   TaskList t;
   const char* f = "[x] a\n[ ] b\n## S1\n[-] c\n[x] d\n[ ] e\n[ ] f\n## S2\n[ ] g\n";
@@ -646,6 +670,7 @@ int main() {
   testCancel();
   testSortFinished();
   testMeasures();
+  testMeasuresOnlySection();
   testLibraryModel();
   testShelfLayout();
   testLibraryNavigation();

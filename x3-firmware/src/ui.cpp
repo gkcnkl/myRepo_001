@@ -339,8 +339,14 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
   if (app.scroll > 0) label(g, "yukarıda daha var", kW - kM, y - 4, 2);
   for (int i = app.scroll; i < last; ++i) {
     const Task& task = t.items[i];
+    const bool sel = !sleeping && i == app.selected;
     if (app.needsHeading(i, app.scroll)) {
-      sectionHeading(g, t.sections[task.section], y + 26);
+      if (task.placeholder && sel) {  // the measures block is selected: inverted heading
+        g.fillRect(kM - 10, y + 6, kW - 2 * kM + 20, App::kSectionH - 8, 1);
+        label(g, t.sections[task.section], kM, y + 26, 0, 0);
+      } else {
+        sectionHeading(g, t.sections[task.section], y + 26);
+      }
       y += App::kSectionH;
       if (app.measuresHeight(i) > 0) {
         for (int m = 0; m < t.measureCount; ++m) {
@@ -351,7 +357,7 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
         y += 6;
       }
     }
-    const bool sel = !sleeping && i == app.selected;
+    if (task.placeholder) continue;
     const uint16_t ink = sel ? 0 : 1;
     if (sel) g.fillRect(kM - 10, y + 1, kW - 2 * kM + 20, App::kRowH - 2, 1);
 

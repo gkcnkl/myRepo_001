@@ -33,7 +33,8 @@ int App::rowsFrom(int first) const {
   int y = listTop();
   int n = 0;
   for (int i = first; i < tasks.count; ++i) {
-    const int h = (needsHeading(i, first) ? kSectionH + measuresHeight(i) : 0) + kRowH;
+    const int h = (needsHeading(i, first) ? kSectionH + measuresHeight(i) : 0) +
+                  (tasks.items[i].placeholder ? 0 : kRowH);
     if (y + h > kListBottom) break;
     y += h;
     ++n;
@@ -150,6 +151,8 @@ Effects App::onButton(Button b, uint32_t nowMs) {
         selected = (selected + 1) % tasks.count;
         keepSelectionVisible();
         fx.redraw = true;
+      } else if (b == Button::Confirm && tasks.items[selected].placeholder) {
+        // the measures block: nothing to mark
       } else if (b == Button::Confirm) {
         // Open -> done -> cancelled -> open.
         Task& t = tasks.items[selected];
@@ -162,7 +165,7 @@ Effects App::onButton(Button b, uint32_t nowMs) {
           t.done = true;
         }
         fx.redraw = fx.save = true;
-      } else if (b == Button::Right) {
+      } else if (b == Button::Right && !tasks.items[selected].placeholder) {
         screen = Screen::Focus;
         focusTask = selected;
         focusStartMs = nowMs;

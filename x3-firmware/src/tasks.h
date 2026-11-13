@@ -14,7 +14,9 @@
 //   [-] 13:30-14:00 | İptal edilen iş      cancelled (also "[~]")
 //   olcu: Adım | 3728 | 10000 | adım       a measure drawn as a horizontal bar
 //                                          under its section heading (value "-"
-//                                          = no data; up to 6)
+//                                          = no data; up to 8). A section
+//                                          with measures but no tasks gets
+//                                          a placeholder row at the end
 //   plain line                             open task
 //   # comment / blank                      ignored
 struct Task {
@@ -25,6 +27,8 @@ struct Task {
   int8_t section;       // index into TaskList::sections, -1 = none
   bool done;
   bool cancelled;       // won't be done today; never both done and cancelled
+  bool placeholder;     // not a task: stands in for a section that only has
+                        // measures, so its heading and bars are drawn
 };
 
 struct Indicator {
@@ -45,7 +49,7 @@ struct TaskList {
   static constexpr int kMax = 30;
   static constexpr int kMaxIndicators = 3;
   static constexpr int kMaxSections = 4;
-  static constexpr int kMaxMeasures = 6;
+  static constexpr int kMaxMeasures = 8;
 
   char eyebrow[64] = "";
   char title[48] = "";
