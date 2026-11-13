@@ -426,6 +426,14 @@ static void testSyncLogic() {
   CHECK(back.count == 3 && back.items[0].done && back.items[2].done);
 }
 
+static void testSixSections() {
+  TaskList t;
+  const char* f = "## A\n[ ] a\n## B\n[ ] b\n## C\n[ ] c\n## D\n[ ] d\n## E\n[ ] e\n## F\n[ ] f\n## G\n[ ] g\n";
+  t.parse(f, strlen(f));
+  CHECK(t.sectionCount == 6 && strcmp(t.sections[5], "F") == 0);
+  CHECK(t.items[5].section == 5);
+}
+
 static void testMeasures() {
   TaskList t;
   const char* f = "olcu: Önce | 1 | 2 | x\n## Alışkanlıklar\nolcu: Su | - | 2500 | ml\nolcu: Adım | 3.728 | 10000 | adım\n"
@@ -670,6 +678,7 @@ int main() {
   testCancel();
   testSortFinished();
   testMeasures();
+  testSixSections();
   testMeasuresOnlySection();
   testLibraryModel();
   testShelfLayout();

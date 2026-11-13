@@ -8,7 +8,7 @@
 //   baslik: Sabah Brifingi                 title (default "Bugün")
 //   alt: Sprint haftası H6 · sezon 7/13    shown after the date
 //   gosterge: Hava | 2,5 °C | kar sağanağı · gün 3,3 / -1,3 °C   (up to 3)
-//   ## Günün akışı                         section heading (up to 4)
+//   ## Günün akışı                         section heading (up to 6)
 //   [x] 09:15-10:00 | Ekip toplantısı      done task with a time column
 //   [ ] Alt katı temizle                   open task, no time
 //   [-] 13:30-14:00 | İptal edilen iş      cancelled (also "[~]")
@@ -48,7 +48,7 @@ struct Measure {
 struct TaskList {
   static constexpr int kMax = 30;
   static constexpr int kMaxIndicators = 3;
-  static constexpr int kMaxSections = 4;
+  static constexpr int kMaxSections = 6;
   static constexpr int kMaxMeasures = 8;
 
   char eyebrow[64] = "";
