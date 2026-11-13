@@ -21,7 +21,7 @@ A. YENİ BÜLTENLER
 1. Gmail'de şu aramayı yap (sayfalayarak): "(to:desklettershq@gmail.com OR to:gkgeziyor OR label:X3 OR to:gokcenkul+x3@gmail.com OR deliveredto:gokcenkul+x3@gmail.com) after:2026/11/10". Her thread'in mesajlarını al. bultenler.txt'de gmail_id'si olmayan her mesaj aday. Adayı şu kurallarla süz; uymayanı İŞLEME ve defterine de yazma:
    - desklettershq@gmail.com: yalnız Substack ve Medium'un yazı içeren mailleri (yeni yazı, haftalık yazı, Medium Daily Digest gibi). Hesap/yazar paneli mailleri ATLANIR: kurulum, giriş bağlantısı, doğrulama kodu, "shareable assets", istatistik, yeni abone, yorum/beğeni bildirimi, ödeme/fatura, ürün duyurusu ("Introducing ...").
    - gkgeziyor: yalnız bültenler (abonelikten çık bağlantısı olan, yazı/makale içeren düzenli yayın). Kişisel yazışma, sipariş, rezervasyon, fatura, kargo, güvenlik ve hesap mailleri ATLANIR.
-   - X3 etiketi ve gokcenkul+x3 adresi: süzme yok, hepsi bülten sayılır.
+   - X3 etiketi ve gokcenkul+x3 adresi: süzme yok, hepsi bülten sayılır. Ama "Kime" alanında desklettershq ya da gkgeziyor olan mesaja (o hesaplardan otomatik iletilen) o adresin kuralı uygulanır.
    - Gövdesi 150 kelimeden kısa olan ya da yalnız "devamını oku" bağlantısından oluşan mailler atlanır.
    Kurallardan geçen yeni mesajlardan, en eskiden başlayarak tek çalıştırmada en fazla 8 bülten işle; kalanı yarına bırak ve raporda sayısını yaz.
 2. Her yeni bülten için mesajı düz metin olarak oku ve kaynak/<gmail_id>.md dosyasını yaz:
