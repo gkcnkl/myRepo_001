@@ -13,7 +13,7 @@ güncellenir. Uykuda ekranda bir kütüphane ödünç kartı durur.
 | Ekran        | Tuş              | Ne yapar                              |
 |--------------|------------------|---------------------------------------|
 | Liste        | YUKARI / AŞAĞI   | Görev seç                             |
-| Liste        | TAMAM            | Açık → bitti → iptal → açık (SD'ye yazar; iptal `[-]`, sayaca girmez). Bitenler ve iptaller bölümün sonuna iner: uyanınca, eşitlemeden sonra ya da kitaplıktan dönünce |
+| Liste        | TAMAM            | Açık → başlandı `[/]` → bitti → iptal `[-]` → açık (SD'ye yazar; iptal sayaca girmez). Bitenler ve iptaller bölümün sonuna iner: uyanınca, eşitlemeden sonra ya da kitaplıktan dönünce |
 | Liste        | SAĞ              | Seçili görev için 25 dk odak başlat   |
 | Liste        | GERİ             | Kitaplık (raf)                        |
 | Liste        | SOL              | Eşitleme ayarlıysa hemen eşitle (kayıtlı ev/telefon Wi-Fi'ı); ayarlı değilse Wi-Fi aktarım ekranı |

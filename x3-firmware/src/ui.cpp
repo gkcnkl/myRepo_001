@@ -286,9 +286,14 @@ void measureBar(Adafruit_GFX& g, const Measure& m, int16_t y) {
   drawEnc(g, &Inter14, e.s, kW - kM - static_cast<int16_t>(widthOf(g, &Inter14, e.s)), y + 20, 1);
 }
 
-void checkCircle(Adafruit_GFX& g, int16_t cx, int16_t cy, bool done, uint16_t ink, bool cancelled = false) {
+void checkCircle(Adafruit_GFX& g, int16_t cx, int16_t cy, bool done, uint16_t ink, bool cancelled = false,
+                 bool started = false) {
   g.drawCircle(cx, cy, 9, ink);
   if (done) g.fillCircle(cx, cy, 4, ink);
+  if (started) {  // a "/" inside the ring: begun, not finished
+    g.drawLine(cx - 4, cy + 5, cx + 4, cy - 5, ink);
+    g.drawLine(cx - 3, cy + 5, cx + 5, cy - 5, ink);
+  }
   if (cancelled) {  // an "x" inside the ring
     g.drawLine(cx - 4, cy - 4, cx + 4, cy + 4, ink);
     g.drawLine(cx - 4, cy + 4, cx + 4, cy - 4, ink);
@@ -322,7 +327,7 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
   } else {
     masthead(g, app, t.eyebrow[0] ? t.eyebrow : "Günlük brifing", t.title[0] ? t.title : "Bugün", true);
   }
-  if (t.indicatorCount > 0) indicatorGrid(g, t);
+  if (t.indicatorCount > 0 && app.scroll == 0) indicatorGrid(g, t);  // first screen only
 
   if (t.count == 0) {
     textCentered(g, &Play26, "Görev yok", 400);
@@ -361,9 +366,12 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
     const uint16_t ink = sel ? 0 : 1;
     if (sel) g.fillRect(kM - 10, y + 1, kW - 2 * kM + 20, App::kRowH - 2, 1);
 
-    checkCircle(g, kM + 9, y + App::kRowH / 2, task.done, ink, task.cancelled);
+    checkCircle(g, kM + 9, y + App::kRowH / 2, task.done, ink, task.cancelled, task.started);
     int16_t tx = kM + 30;
-    if (anyTime) {
+    bool sectionTime = false;  // align times only where the section has any
+    for (int k = 0; k < t.count; ++k)
+      sectionTime |= t.items[k].section == task.section && t.items[k].time[0] != '\0';
+    if (anyTime && sectionTime) {
       if (task.time[0]) text(g, &Play18, task.time, tx, y + 29, kTimeColW - 8, ink);
       tx += kTimeColW;
     }
@@ -388,8 +396,8 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
     return;
   }
   const char* hint = t.count == 0 ? "GERİ tazele  ·  GÜÇ uyku"
-                                  : app.syncConfigured ? "TAMAM bitti/iptal  ·  SOL eşitle  ·  SAĞ odak"
-                                                    : "TAMAM bitti/iptal  ·  SOL Wi-Fi  ·  SAĞ odak";
+                                  : app.syncConfigured ? "TAMAM durum  ·  SOL eşitle  ·  SAĞ odak"
+                                                    : "TAMAM durum  ·  SOL Wi-Fi  ·  SAĞ odak";
   const char* right = !app.sdAvailable ? "SD kart yok" : app.syncNote[0] ? app.syncNote : weekdayOf(app, wd, sizeof wd);
   statusBar(g, done, right, hint);
 }

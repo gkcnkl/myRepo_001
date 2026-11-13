@@ -215,8 +215,10 @@ void TaskList::parse(const char* data, size_t len) {
     bool done = false;
     if (startsWith(line, n, "- ")) { line += 2; n -= 2; }
     bool cancelled = false;
+    bool started = false;
     if (startsWith(line, n, "[x]") || startsWith(line, n, "[X]")) { done = true; line += 3; n -= 3; }
     else if (startsWith(line, n, "[-]") || startsWith(line, n, "[~]")) { cancelled = true; line += 3; n -= 3; }
+    else if (startsWith(line, n, "[/]")) { started = true; line += 3; n -= 3; }
     else if (startsWith(line, n, "[ ]")) { line += 3; n -= 3; }
     trim(line, n);
     if (n == 0) continue;
@@ -224,6 +226,7 @@ void TaskList::parse(const char* data, size_t len) {
     Task& t = items[count++];
     t.done = done;
     t.cancelled = cancelled;
+    t.started = started;
     t.placeholder = false;
     t.section = static_cast<int8_t>(currentSection);
     t.time[0] = '\0';
@@ -246,7 +249,7 @@ void TaskList::parse(const char* data, size_t len) {
     Task& t = items[count++];
     t.text[0] = t.time[0] = '\0';
     t.section = static_cast<int8_t>(sec);
-    t.done = t.cancelled = false;
+    t.done = t.cancelled = t.started = false;
     t.placeholder = true;
   }
 }
@@ -293,7 +296,7 @@ size_t TaskList::serialize(char* buf, size_t bufSize) const {
       putMeasures(section);
     }
     if (t.placeholder) continue;  // its heading and measures are written above
-    put(t.done ? "[x] " : (t.cancelled ? "[-] " : "[ ] "));
+    put(t.done ? "[x] " : t.cancelled ? "[-] " : t.started ? "[/] " : "[ ] ");
     if (t.time[0]) { put(t.time); put(" | "); }
     put(t.text);
     put("\n");

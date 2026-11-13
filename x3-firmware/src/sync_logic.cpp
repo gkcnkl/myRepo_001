@@ -11,9 +11,10 @@ int mergeDoneMarks(TaskList& fresh, const TaskList& local) {
     if (t.done) continue;  // done on the server stays done
     for (int j = 0; j < local.count; ++j) {
       const Task& l = local.items[j];
-      if ((l.done || l.cancelled) && strcmp(l.text, t.text) == 0 && strcmp(l.time, t.time) == 0) {
+      if ((l.done || l.cancelled || l.started) && strcmp(l.text, t.text) == 0 && strcmp(l.time, t.time) == 0) {
         t.done = l.done;
         t.cancelled = l.cancelled;
+        t.started = l.started && !l.done && !l.cancelled;
         ++carried;
         break;
       }

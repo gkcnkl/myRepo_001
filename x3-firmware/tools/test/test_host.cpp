@@ -157,9 +157,9 @@ static void testListNavigation() {
   a.onButton(Button::Down, 0);
   CHECK(a.selected == 0);
   Effects fx = a.onButton(Button::Confirm, 0);
-  CHECK(fx.save && fx.redraw && a.tasks.items[0].done);
+  CHECK(fx.save && fx.redraw && a.tasks.items[0].started && !a.tasks.items[0].done);
   fx = a.onButton(Button::Confirm, 0);
-  CHECK(!a.tasks.items[0].done);
+  CHECK(a.tasks.items[0].done && !a.tasks.items[0].started);
   fx = a.onButton(Button::Back, 0);  // BACK opens the bookshelf
   CHECK(fx.redraw && a.screen == Screen::Library);
   CHECK(a.onButton(Button::Power, 0).sleep);
@@ -489,7 +489,8 @@ static void testSortFinished() {
   App a;
   a.tasks = t;
   a.selected = 2;
-  a.onButton(Button::Confirm, 0);
+  a.onButton(Button::Confirm, 0);  // started
+  a.onButton(Button::Confirm, 0);  // done
   CHECK(strcmp(a.tasks.items[2].text, "e") == 0 && a.tasks.items[2].done);
   a.onButton(Button::Back, 0);  // to the shelf
   a.onButton(Button::Back, 0);  // and back: sorted
@@ -506,16 +507,31 @@ static void testCancel() {
   t.serialize(out, sizeof out);
   CHECK(strstr(out, "[-] 11:00 | İptal olan\n") != nullptr && strstr(out, "[-] Eski iptal\n") != nullptr);
 
-  // CONFIRM cycles open -> done -> cancelled -> open.
+  // CONFIRM cycles open -> started -> done -> cancelled -> open.
   App a;
   a.tasks = t;
   a.selected = 0;
   a.onButton(Button::Confirm, 0);
-  CHECK(a.tasks.items[0].done && !a.tasks.items[0].cancelled);
+  CHECK(a.tasks.items[0].started && !a.tasks.items[0].done && !a.tasks.items[0].cancelled);
+  a.onButton(Button::Confirm, 0);
+  CHECK(a.tasks.items[0].done && !a.tasks.items[0].started && !a.tasks.items[0].cancelled);
   Effects fx = a.onButton(Button::Confirm, 0);
   CHECK(!a.tasks.items[0].done && a.tasks.items[0].cancelled && fx.save);
   a.onButton(Button::Confirm, 0);
-  CHECK(!a.tasks.items[0].done && !a.tasks.items[0].cancelled);
+  CHECK(!a.tasks.items[0].done && !a.tasks.items[0].cancelled && !a.tasks.items[0].started);
+
+  // "[/]" is started: parsed, kept through a sync, written back.
+  TaskList st;
+  const char* sf = "[/] 10:00 | Rapor\n";
+  st.parse(sf, strlen(sf));
+  CHECK(st.items[0].started && !st.items[0].done && st.doneCount() == 0 && st.activeCount() == 1);
+  TaskList fresh2;
+  const char* sr = "[ ] 10:00 | Rapor\n";
+  fresh2.parse(sr, strlen(sr));
+  CHECK(mergeDoneMarks(fresh2, st) == 1 && fresh2.items[0].started);
+  char so[128];
+  fresh2.serialize(so, sizeof so);
+  CHECK(strstr(so, "[/] 10:00 | Rapor\n") != nullptr);
 
   // Device marks survive a fresh download; a server "done" wins.
   TaskList local, fresh;

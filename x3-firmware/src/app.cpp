@@ -14,7 +14,11 @@ int App::focusMinutesLeft(uint32_t nowMs) const {
   return static_cast<int>((left + 59999) / 60000);
 }
 
-int App::listTop() const { return tasks.indicatorCount > 0 ? kTopWithIndicators : kTopNoIndicators; }
+// The indicators only show on the first screen: scrolled, the list starts higher.
+int App::listTop(int first) const {
+  return tasks.indicatorCount > 0 && first == 0 ? kTopWithIndicators : kTopNoIndicators;
+}
+int App::listTop() const { return listTop(scroll); }
 
 bool App::needsHeading(int i, int first) const {
   const int s = tasks.items[i].section;
@@ -30,7 +34,7 @@ int App::measuresHeight(int i) const {
 }
 
 int App::rowsFrom(int first) const {
-  int y = listTop();
+  int y = listTop(first);
   int n = 0;
   for (int i = first; i < tasks.count; ++i) {
     const int h = (needsHeading(i, first) ? kSectionH + measuresHeight(i) : 0) +
@@ -154,15 +158,18 @@ Effects App::onButton(Button b, uint32_t nowMs) {
       } else if (b == Button::Confirm && tasks.items[selected].placeholder) {
         // the measures block: nothing to mark
       } else if (b == Button::Confirm) {
-        // Open -> done -> cancelled -> open.
+        // Open -> started -> done -> cancelled -> open.
         Task& t = tasks.items[selected];
-        if (t.done) {
+        if (t.cancelled) {
+          t.cancelled = false;
+        } else if (t.done) {
           t.done = false;
           t.cancelled = true;
-        } else if (t.cancelled) {
-          t.cancelled = false;
-        } else {
+        } else if (t.started) {
+          t.started = false;
           t.done = true;
+        } else {
+          t.started = true;
         }
         fx.redraw = fx.save = true;
       } else if (b == Button::Right && !tasks.items[selected].placeholder) {
@@ -230,6 +237,7 @@ Effects App::onButton(Button b, uint32_t nowMs) {
         if (focusTask >= 0 && focusTask < tasks.count) {
           tasks.items[focusTask].done = true;
           tasks.items[focusTask].cancelled = false;
+          tasks.items[focusTask].started = false;
           fx.save = true;
         }
         screen = Screen::List;

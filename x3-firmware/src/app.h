@@ -83,6 +83,7 @@ struct App {
 
   uint32_t focusElapsed(uint32_t nowMs) const;
   int listTop() const;
+  int listTop(int first) const;
   // Does task i start a new section heading when drawn after `first`?
   bool needsHeading(int i, int first) const;
   // Height of the measures block drawn under task i's heading (only where its

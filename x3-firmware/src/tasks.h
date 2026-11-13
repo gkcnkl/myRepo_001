@@ -12,6 +12,7 @@
 //   [x] 09:15-10:00 | Ekip toplantısı      done task with a time column
 //   [ ] Alt katı temizle                   open task, no time
 //   [-] 13:30-14:00 | İptal edilen iş      cancelled (also "[~]")
+//   [/] Rapor                              started, not finished
 //   olcu: Adım | 3728 | 10000 | adım       a measure drawn as a horizontal bar
 //                                          under its section heading (value "-"
 //                                          = no data; up to 8). A section
@@ -27,6 +28,7 @@ struct Task {
   int8_t section;       // index into TaskList::sections, -1 = none
   bool done;
   bool cancelled;       // won't be done today; never both done and cancelled
+  bool started;         // begun, not finished (only while neither done nor cancelled)
   bool placeholder;     // not a task: stands in for a section that only has
                         // measures, so its heading and bars are drawn
 };
