@@ -22,11 +22,18 @@ bool App::needsHeading(int i, int first) const {
   return i == first || tasks.items[i - 1].section != s;
 }
 
+int App::measuresHeight(int i) const {
+  const int s = tasks.items[i].section;
+  if (s < 0 || (i > 0 && tasks.items[i - 1].section == s)) return 0;
+  const int n = tasks.measuresIn(s);
+  return n > 0 ? n * kMeasureH + 6 : 0;
+}
+
 int App::rowsFrom(int first) const {
   int y = listTop();
   int n = 0;
   for (int i = first; i < tasks.count; ++i) {
-    const int h = (needsHeading(i, first) ? kSectionH : 0) + kRowH;
+    const int h = (needsHeading(i, first) ? kSectionH + measuresHeight(i) : 0) + kRowH;
     if (y + h > kListBottom) break;
     y += h;
     ++n;

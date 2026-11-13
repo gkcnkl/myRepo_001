@@ -12,6 +12,9 @@
 //   [x] 09:15-10:00 | Ekip toplantısı      done task with a time column
 //   [ ] Alt katı temizle                   open task, no time
 //   [-] 13:30-14:00 | İptal edilen iş      cancelled (also "[~]")
+//   olcu: Adım | 3728 | 10000 | adım       a measure drawn as a horizontal bar
+//                                          under its section heading (value "-"
+//                                          = no data; up to 6)
 //   plain line                             open task
 //   # comment / blank                      ignored
 struct Task {
@@ -30,10 +33,19 @@ struct Indicator {
   char detail[96];
 };
 
+struct Measure {
+  char label[24];
+  char unit[12];
+  int32_t value;  // -1 = no data
+  int32_t goal;   // > 0
+  int8_t section; // -1 = before any heading
+};
+
 struct TaskList {
   static constexpr int kMax = 30;
   static constexpr int kMaxIndicators = 3;
   static constexpr int kMaxSections = 4;
+  static constexpr int kMaxMeasures = 6;
 
   char eyebrow[64] = "";
   char title[48] = "";
@@ -44,6 +56,10 @@ struct TaskList {
   int sectionCount = 0;
   Task items[kMax];
   int count = 0;
+  Measure measures[kMaxMeasures];
+  int measureCount = 0;
+  // How many measures belong to section `s`.
+  int measuresIn(int s) const;
 
   int doneCount() const;
   // Tasks that still count (not cancelled): the "x / n" total.

@@ -1,5 +1,7 @@
 #include "tasks.h"
 
+#include <stdio.h>
+
 #include <string.h>
 
 const char kSampleTasksFile[] =
@@ -14,6 +16,12 @@ const char kSampleTasksFile[] =
     "[ ] 18:00-19:00 | Kitaptan bir bölüm oku\n"
     "## Bugün due\n"
     "[ ] Şirket toplantısına hazırlan\n";
+
+int TaskList::measuresIn(int sec) const {
+  int n = 0;
+  for (int i = 0; i < measureCount; ++i) n += measures[i].section == sec ? 1 : 0;
+  return n;
+}
 
 int TaskList::activeCount() const {
   int n = 0;
@@ -80,6 +88,22 @@ const char* const kEyebrowKeys[] = {"ust", "üst", nullptr};
 const char* const kTitleKeys[] = {"baslik", "başlık", nullptr};
 const char* const kSubtitleKeys[] = {"alt", nullptr};
 const char* const kIndicatorKeys[] = {"gosterge", "gösterge", nullptr};
+const char* const kMeasureKeys[] = {"olcu", "ölçü", nullptr};
+
+// "3728", "3.728" or "-" (no data) -> number, or -1.
+int32_t parseAmount(const char* s, size_t n) {
+  int32_t v = 0;
+  bool any = false;
+  for (size_t i = 0; i < n; ++i) {
+    if (s[i] >= '0' && s[i] <= '9') {
+      if (v < 100000000) v = v * 10 + (s[i] - '0');
+      any = true;
+    } else if (s[i] == ',') {
+      break;  // decimals are dropped
+    }
+  }
+  return any ? v : -1;
+}
 
 }  // namespace
 
@@ -110,6 +134,7 @@ void TaskList::parse(const char* data, size_t len) {
   count = 0;
   indicatorCount = 0;
   sectionCount = 0;
+  measureCount = 0;
   eyebrow[0] = title[0] = subtitle[0] = '\0';
   int currentSection = -1;
 
@@ -144,6 +169,26 @@ void TaskList::parse(const char* data, size_t len) {
     if (keyValue(line, n, kEyebrowKeys, v, vn)) { copyText(eyebrow, sizeof eyebrow, v, vn); continue; }
     if (keyValue(line, n, kTitleKeys, v, vn)) { copyText(title, sizeof title, v, vn); continue; }
     if (keyValue(line, n, kSubtitleKeys, v, vn)) { copyText(subtitle, sizeof subtitle, v, vn); continue; }
+    if (keyValue(line, n, kMeasureKeys, v, vn)) {
+      // olcu: label | value | goal | unit
+      size_t l1, rest1, l2, rest2, l3, rest3;
+      const char *r1, *r2, *r3;
+      if (measureCount >= kMaxMeasures || !splitBar(v, vn, l1, r1, rest1) || !splitBar(r1, rest1, l2, r2, rest2)) continue;
+      Measure& m = measures[measureCount];
+      copyText(m.label, sizeof m.label, v, l1);
+      m.value = parseAmount(r1, l2);
+      m.unit[0] = '\0';
+      if (splitBar(r2, rest2, l3, r3, rest3)) {
+        m.goal = parseAmount(r2, l3);
+        copyText(m.unit, sizeof m.unit, r3, rest3);
+      } else {
+        m.goal = parseAmount(r2, rest2);
+      }
+      if (m.goal <= 0) continue;
+      m.section = static_cast<int8_t>(currentSection);
+      ++measureCount;
+      continue;
+    }
     if (keyValue(line, n, kIndicatorKeys, v, vn)) {
       if (indicatorCount >= kMaxIndicators) continue;
       Indicator& ind = indicators[indicatorCount++];
@@ -210,6 +255,19 @@ size_t TaskList::serialize(char* buf, size_t bufSize) const {
     if (indicators[i].detail[0]) { put(" | "); put(indicators[i].detail); }
     put("\n");
   }
+  auto putMeasures = [&](int sec) {
+    for (int m = 0; m < measureCount; ++m) {
+      if (measures[m].section != sec) continue;
+      char line[96];
+      char val[16];
+      if (measures[m].value < 0) snprintf(val, sizeof val, "-");
+      else snprintf(val, sizeof val, "%ld", static_cast<long>(measures[m].value));
+      snprintf(line, sizeof line, "olcu: %s | %s | %ld | %s\n", measures[m].label, val,
+               static_cast<long>(measures[m].goal), measures[m].unit);
+      put(line);
+    }
+  };
+  putMeasures(-1);
   int section = -1;
   for (int i = 0; i < count; ++i) {
     const Task& t = items[i];
@@ -218,6 +276,7 @@ size_t TaskList::serialize(char* buf, size_t bufSize) const {
       put("## ");
       put(sections[section]);
       put("\n");
+      putMeasures(section);
     }
     put(t.done ? "[x] " : (t.cancelled ? "[-] " : "[ ] "));
     if (t.time[0]) { put(t.time); put(" | "); }
@@ -228,7 +287,7 @@ size_t TaskList::serialize(char* buf, size_t bufSize) const {
   for (int s = 0; s < sectionCount; ++s) {
     bool used = false;
     for (int i = 0; i < count && !used; ++i) used = items[i].section == s;
-    if (!used) { put("## "); put(sections[s]); put("\n"); }
+    if (!used) { put("## "); put(sections[s]); put("\n"); putMeasures(s); }
   }
   buf[o] = '\0';
   return o;

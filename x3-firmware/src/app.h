@@ -39,6 +39,7 @@ struct App {
   static constexpr int kListBottom = 712;
   static constexpr int kRowH = 46;
   static constexpr int kSectionH = 40;
+  static constexpr int kMeasureH = 30;  // one horizontal bar under a heading
 
   TaskList tasks;
   Screen screen = Screen::List;
@@ -84,6 +85,9 @@ struct App {
   int listTop() const;
   // Does task i start a new section heading when drawn after `first`?
   bool needsHeading(int i, int first) const;
+  // Height of the measures block drawn under task i's heading (only where its
+  // section really starts, not when a scrolled list repeats the heading).
+  int measuresHeight(int i) const;
   // How many tasks fit on screen when the list starts at task `first` (>= 1).
   int rowsFrom(int first) const;
   // Whole minutes left, rounded up (25 ... 1, 0 when finished).

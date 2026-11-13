@@ -426,6 +426,23 @@ static void testSyncLogic() {
   CHECK(back.count == 3 && back.items[0].done && back.items[2].done);
 }
 
+static void testMeasures() {
+  TaskList t;
+  const char* f = "olcu: Önce | 1 | 2 | x\n## Alışkanlıklar\nolcu: Su | - | 2500 | ml\nolcu: Adım | 3.728 | 10000 | adım\n"
+                  "olcu: Bozuk | 5\nolcu: Hedefsiz | 5 | 0 | x\n[ ] Sağlık: rutin haftası\n";
+  t.parse(f, strlen(f));
+  CHECK(t.measureCount == 3);
+  CHECK(t.measures[0].section == -1 && t.measuresIn(0) == 2);
+  CHECK(t.measures[1].value == -1 && t.measures[1].goal == 2500 && strcmp(t.measures[1].unit, "ml") == 0);
+  CHECK(t.measures[2].value == 3728 && strcmp(t.measures[2].label, "Adım") == 0);
+  char out[512];
+  t.serialize(out, sizeof out);
+  CHECK(strstr(out, "## Alışkanlıklar\nolcu: Su | - | 2500 | ml\nolcu: Adım | 3728 | 10000 | adım\n[ ] Sağlık") != nullptr);
+  App a;
+  a.tasks = t;
+  CHECK(a.measuresHeight(0) == 2 * App::kMeasureH + 6);
+}
+
 static void testSortFinished() {
   TaskList t;
   const char* f = "[x] a\n[ ] b\n## S1\n[-] c\n[x] d\n[ ] e\n[ ] f\n## S2\n[ ] g\n";
@@ -628,6 +645,7 @@ int main() {
   testPickNetwork();
   testCancel();
   testSortFinished();
+  testMeasures();
   testLibraryModel();
   testShelfLayout();
   testLibraryNavigation();

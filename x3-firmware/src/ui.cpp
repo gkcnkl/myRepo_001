@@ -247,6 +247,45 @@ void indicatorGrid(Adafruit_GFX& g, const TaskList& t) {
   hairline(g, kM, bottom, kW - 2 * kM);
 }
 
+// "12.345" with Turkish thousands dots.
+void groupDigits(long v, char* out, size_t n) {
+  char raw[16];
+  snprintf(raw, sizeof raw, "%ld", v);
+  const size_t len = strlen(raw);
+  size_t o = 0;
+  for (size_t i = 0; i < len && o + 2 < n; ++i) {
+    if (i > 0 && (len - i) % 3 == 0) out[o++] = '.';
+    out[o++] = raw[i];
+  }
+  out[o] = '\0';
+}
+
+// One measure: label on the left, a horizontal bar, "value / goal unit" on
+// the right; an outlined empty bar and "veri yok" when there is no data.
+void measureBar(Adafruit_GFX& g, const Measure& m, int16_t y) {
+  const int16_t labelW = 118, valueW = 150;
+  const int16_t bx = kM + labelW, bw = kW - kM - valueW - bx - 10, by = y + 11, bh = 10;
+  text(g, &Inter14, m.label, kM, y + 20, labelW - 8, 1);
+  g.drawRect(bx, by, bw, bh, 1);
+  char right[40];
+  if (m.value < 0) {
+    snprintf(right, sizeof right, "veri yok");
+    for (int16_t x = bx + 3; x < bx + bw - 1; x += 6) g.drawPixel(x, by + bh / 2, 1);  // dotted: empty
+  } else {
+    const long cap = m.value > m.goal ? m.goal : m.value;
+    const int16_t fill = static_cast<int16_t>((bw - 4) * cap / m.goal);
+    if (fill > 0) g.fillRect(bx + 2, by + 2, fill, bh - 4, 1);
+    if (m.value >= m.goal) g.fillRect(bx + bw + 3, by, 3, bh, 1);  // goal reached: a tick at the end
+    char v[16], gl[16];
+    groupDigits(m.value, v, sizeof v);
+    groupDigits(m.goal, gl, sizeof gl);
+    snprintf(right, sizeof right, "%s / %s %s", v, gl, m.unit);
+  }
+  Encoded e(right);
+  fitWidth(g, &Inter14, e.s, valueW);
+  drawEnc(g, &Inter14, e.s, kW - kM - static_cast<int16_t>(widthOf(g, &Inter14, e.s)), y + 20, 1);
+}
+
 void checkCircle(Adafruit_GFX& g, int16_t cx, int16_t cy, bool done, uint16_t ink, bool cancelled = false) {
   g.drawCircle(cx, cy, 9, ink);
   if (done) g.fillCircle(cx, cy, 4, ink);
@@ -303,6 +342,14 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
     if (app.needsHeading(i, app.scroll)) {
       sectionHeading(g, t.sections[task.section], y + 26);
       y += App::kSectionH;
+      if (app.measuresHeight(i) > 0) {
+        for (int m = 0; m < t.measureCount; ++m) {
+          if (t.measures[m].section != task.section) continue;
+          measureBar(g, t.measures[m], y);
+          y += App::kMeasureH;
+        }
+        y += 6;
+      }
     }
     const bool sel = !sleeping && i == app.selected;
     const uint16_t ink = sel ? 0 : 1;
