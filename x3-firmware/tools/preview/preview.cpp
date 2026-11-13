@@ -37,6 +37,7 @@ int main(int argc, char** argv) {
     const size_t n = f ? fread(buf, 1, sizeof buf, f) : 0;
     if (f) fclose(f);
     app.tasks.parse(buf, n);
+    app.tasks.sortFinishedLast();  // as the device does after loading
   } else {
     app.tasks.loadSample();
     app.tasks.items[0].done = true;

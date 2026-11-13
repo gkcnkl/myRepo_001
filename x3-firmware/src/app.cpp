@@ -84,6 +84,9 @@ Effects App::onLibraryButton(Button b) {
       return fx;
     case Button::Back:
       screen = Screen::List;
+      tasks.sortFinishedLast();  // finished tasks sink when the list is reopened
+      selected = 0;
+      scroll = 0;
       fx.redraw = fx.fullRefresh = true;
       return fx;
     default:

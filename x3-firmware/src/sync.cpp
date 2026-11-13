@@ -341,6 +341,7 @@ SyncOutcome runSync(const SyncSettings& s, TaskList& tasks, const Library* lib, 
     if (fresh != nullptr) {
       fresh->parse(body.c_str(), body.length());
       mergeDoneMarks(*fresh, tasks);
+      fresh->sortFinishedLast();
       tasks = *fresh;
       delete fresh;
       out.changed = true;

@@ -158,6 +158,7 @@ void loadTasks() {
   const int n = f.read(gTextBuf, sizeof gTextBuf);
   f.close();
   app.tasks.parse(gTextBuf, n > 0 ? static_cast<size_t>(n) : 0);
+  app.tasks.sortFinishedLast();  // after a wake or sync: finished tasks at the bottom
   Serial.printf("[x3] loaded %d tasks from %s\n", app.tasks.count, tasksPath);
 }
 

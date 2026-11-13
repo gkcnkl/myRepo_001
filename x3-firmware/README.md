@@ -13,7 +13,7 @@ güncellenir. Uykuda ekranda bir kütüphane ödünç kartı durur.
 | Ekran        | Tuş              | Ne yapar                              |
 |--------------|------------------|---------------------------------------|
 | Liste        | YUKARI / AŞAĞI   | Görev seç                             |
-| Liste        | TAMAM            | Açık → bitti → iptal → açık (SD'ye yazar; iptal `[-]`, sayaca girmez)|
+| Liste        | TAMAM            | Açık → bitti → iptal → açık (SD'ye yazar; iptal `[-]`, sayaca girmez). Bitenler ve iptaller bölümün sonuna iner: uyanınca, eşitlemeden sonra ya da kitaplıktan dönünce |
 | Liste        | SAĞ              | Seçili görev için 25 dk odak başlat   |
 | Liste        | GERİ             | Kitaplık (raf)                        |
 | Liste        | SOL              | Eşitleme ayarlıysa hemen eşitle (kayıtlı ev/telefon Wi-Fi'ı); ayarlı değilse Wi-Fi aktarım ekranı |
@@ -151,17 +151,17 @@ biçim anlaşılmamıştır (`2026-11-10 15:30` biçimi de kabul edilir).
 
 **Güncelleme** (cihazda zaten bu yazılım varsa): yalnız uygulamayı yazar;
 eşitleme ayarları, Wi-Fi şifreleri ve okuma ayarları (NVS, 0x9000) korunur.
-`release/x3-bugun-v0.15.0-guncelleme.bin` dosyasını esptool klasörüne kopyala:
+`release/x3-bugun-v0.16.0-guncelleme.bin` dosyasını esptool klasörüne kopyala:
 
 ```
-.\esptool --port COM14 --baud 921600 write-flash 0x10000 x3-bugun-v0.15.0-guncelleme.bin
+.\esptool --port COM14 --baud 921600 write-flash 0x10000 x3-bugun-v0.16.0-guncelleme.bin
 ```
 
 **İlk kurulum** (orijinal yazılımdan geçerken): tek parça imaj 0x0'dan yazılır
 ve NVS'yi de siler, ayarlar yeniden girilir.
 
 ```
-.\esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.15.0-ilk-kurulum.bin
+.\esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.16.0-ilk-kurulum.bin
 ```
 
 ## Fabrika firmware'ine dönüş

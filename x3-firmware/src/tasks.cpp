@@ -83,6 +83,29 @@ const char* const kIndicatorKeys[] = {"gosterge", "gösterge", nullptr};
 
 }  // namespace
 
+namespace {
+int finishRank(const Task& t) { return t.cancelled ? 2 : (t.done ? 1 : 0); }
+}  // namespace
+
+void TaskList::sortFinishedLast() {
+  // Tasks of a section are contiguous: stable insertion sort inside each run.
+  int start = 0;
+  while (start < count) {
+    int end = start + 1;
+    while (end < count && items[end].section == items[start].section) ++end;
+    for (int i = start + 1; i < end; ++i) {
+      const Task moving = items[i];
+      int j = i;
+      while (j > start && finishRank(items[j - 1]) > finishRank(moving)) {
+        items[j] = items[j - 1];
+        --j;
+      }
+      items[j] = moving;
+    }
+    start = end;
+  }
+}
+
 void TaskList::parse(const char* data, size_t len) {
   count = 0;
   indicatorCount = 0;

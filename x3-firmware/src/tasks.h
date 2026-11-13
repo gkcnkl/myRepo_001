@@ -48,7 +48,11 @@ struct TaskList {
   int doneCount() const;
   // Tasks that still count (not cancelled): the "x / n" total.
   int activeCount() const;
+  // Within each section: open tasks first, then done, then cancelled; the
+  // order inside each group is kept. Sections stay where they are.
+  void sortFinishedLast();
   // Parses file content (need not be NUL-terminated). Extras are dropped.
+  // Keeps the file's order; call sortFinishedLast() to tidy it for display.
   void parse(const char* data, size_t len);
   // Writes the file content back; returns bytes written (excluding NUL),
   // truncating at bufSize-1.

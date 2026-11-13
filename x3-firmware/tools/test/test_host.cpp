@@ -426,6 +426,27 @@ static void testSyncLogic() {
   CHECK(back.count == 3 && back.items[0].done && back.items[2].done);
 }
 
+static void testSortFinished() {
+  TaskList t;
+  const char* f = "[x] a\n[ ] b\n## S1\n[-] c\n[x] d\n[ ] e\n[ ] f\n## S2\n[ ] g\n";
+  t.parse(f, strlen(f));
+  CHECK(strcmp(t.items[0].text, "a") == 0);  // parse keeps the file order
+  t.sortFinishedLast();
+  const char* want[] = {"b", "a", "e", "f", "d", "c", "g"};
+  CHECK(t.count == 7);
+  for (int i = 0; i < 7; ++i) CHECK(strcmp(t.items[i].text, want[i]) == 0);
+  CHECK(t.items[2].section == 0 && t.items[5].section == 0 && t.items[6].section == 1);
+  // Marking in place does not move the row until the list is re-sorted.
+  App a;
+  a.tasks = t;
+  a.selected = 2;
+  a.onButton(Button::Confirm, 0);
+  CHECK(strcmp(a.tasks.items[2].text, "e") == 0 && a.tasks.items[2].done);
+  a.onButton(Button::Back, 0);  // to the shelf
+  a.onButton(Button::Back, 0);  // and back: sorted
+  CHECK(a.screen == Screen::List && strcmp(a.tasks.items[2].text, "f") == 0);
+}
+
 static void testCancel() {
   TaskList t;
   const char* f = "## A\n[ ] 09:00 | Toplantı\n[x] Rapor\n[-] 11:00 | İptal olan\n[~] Eski iptal\n";
@@ -606,6 +627,7 @@ int main() {
   testBookSync();
   testPickNetwork();
   testCancel();
+  testSortFinished();
   testLibraryModel();
   testShelfLayout();
   testLibraryNavigation();
