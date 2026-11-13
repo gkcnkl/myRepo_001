@@ -36,7 +36,8 @@ Tuşların cihazdaki yerleri: [docs-hardware.md](docs-hardware.md).
 
 Cihaz uyanınca (son eşitlemeden en az 30 dakika geçtiyse) ya da Wi-Fi
 ekranında TAMAM'a basınca ev Wi-Fi'ına bağlanır ve özel bir GitHub deposuyla
-eşitlenir:
+eşitlenir (iki ağ kaydedilebilir: ev ve telefon; cihaz çevrede hangisi
+varsa, ikisi de varsa sinyali güçlü olana bağlanır):
 
 - `brifing.txt` (Sabah Brifingi rutini yazar) indirilir; cihazda tamamlanan
   görevler (aynı saat + metin) yeni listede de tamamlanmış kalır.
@@ -143,10 +144,19 @@ biçim anlaşılmamıştır (`2026-11-10 15:30` biçimi de kabul edilir).
 
 ## Hazır imajı yükleme (Windows)
 
-`release/x3-bugun-v0.12.0.bin` dosyasını esptool klasörüne kopyala, sonra:
+**Güncelleme** (cihazda zaten bu yazılım varsa): yalnız uygulamayı yazar;
+eşitleme ayarları, Wi-Fi şifreleri ve okuma ayarları (NVS, 0x9000) korunur.
+`release/x3-bugun-v0.13.0-guncelleme.bin` dosyasını esptool klasörüne kopyala:
 
-```bash
-esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.12.0.bin
+```
+.\esptool --port COM14 --baud 921600 write-flash 0x10000 x3-bugun-v0.13.0-guncelleme.bin
+```
+
+**İlk kurulum** (orijinal yazılımdan geçerken): tek parça imaj 0x0'dan yazılır
+ve NVS'yi de siler, ayarlar yeniden girilir.
+
+```
+.\esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.13.0-ilk-kurulum.bin
 ```
 
 ## Fabrika firmware'ine dönüş

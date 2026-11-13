@@ -810,8 +810,8 @@ void handleGetSettings() {
   const size_t n = strlen(syncSettings.token);
   if (n >= 4) snprintf(hint, sizeof hint, "...%s", syncSettings.token + n - 4);
   char line[256];
-  snprintf(line, sizeof line, "%s\t%s\t%s\t%s\t%d", syncSettings.ssid, syncSettings.repo, syncSettings.branch, hint,
-           syncSettings.pass[0] ? 1 : 0);
+  snprintf(line, sizeof line, "%s\t%s\t%s\t%s\t%d\t%s\t%d", syncSettings.ssid, syncSettings.repo, syncSettings.branch,
+           hint, syncSettings.pass[0] ? 1 : 0, syncSettings.ssid2, syncSettings.pass2[0] ? 1 : 0);
   server.send(200, "text/plain; charset=utf-8", line);  // never the password or the token
 }
 
@@ -824,6 +824,8 @@ void handlePostSettings() {
   };
   take("ssid", syncSettings.ssid, sizeof syncSettings.ssid, false);
   take("pass", syncSettings.pass, sizeof syncSettings.pass, true);
+  take("ssid2", syncSettings.ssid2, sizeof syncSettings.ssid2, false);
+  take("pass2", syncSettings.pass2, sizeof syncSettings.pass2, true);
   take("token", syncSettings.token, sizeof syncSettings.token, true);
   take("repo", syncSettings.repo, sizeof syncSettings.repo, false);
   take("branch", syncSettings.branch, sizeof syncSettings.branch, false);

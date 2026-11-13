@@ -12,12 +12,14 @@
 #include "tasks.h"
 
 struct SyncSettings {
-  char ssid[33] = "";
+  char ssid[33] = "";   // home Wi-Fi
   char pass[65] = "";
+  char ssid2[33] = "";  // second network, e.g. the phone's hotspot
+  char pass2[65] = "";
   char token[128] = "";
   char repo[64] = "gkcnkl/x3-sync";
   char branch[32] = "main";
-  bool configured() const { return ssid[0] && token[0] && repo[0]; }
+  bool configured() const { return (ssid[0] || ssid2[0]) && token[0] && repo[0]; }
 };
 
 // Settings live in NVS (Preferences namespace "x3sync").

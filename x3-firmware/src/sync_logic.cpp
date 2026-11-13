@@ -139,6 +139,20 @@ size_t buildDeviceStateFile(const TaskList& tasks, const Library* lib, const cha
   return o;
 }
 
+int pickNetwork(const char* const saved[2], const char* const seen[], const int rssi[], int seenCount) {
+  int best = -1, bestRssi = -1000;
+  for (int k = 0; k < 2; ++k) {
+    if (saved[k] == nullptr || saved[k][0] == '\0') continue;
+    for (int i = 0; i < seenCount; ++i) {
+      if (strcmp(seen[i], saved[k]) == 0 && rssi[i] > bestRssi) {
+        best = k;
+        bestRssi = rssi[i];
+      }
+    }
+  }
+  return best;
+}
+
 bool safeBookName(const char* name) {
   const size_t n = strlen(name);
   if (n == 0 || n >= sizeof(BookInfo{}.file) || name[0] == '.' || name[0] == ' ') return false;

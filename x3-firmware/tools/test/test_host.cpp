@@ -420,6 +420,20 @@ static void testSyncLogic() {
   CHECK(back.count == 3 && back.items[0].done && back.items[2].done);
 }
 
+static void testPickNetwork() {
+  const char* saved[2] = {"Ev", "GKphone"};
+  const char* seen[] = {"Komsu", "GKphone", "Ev", "Ev"};
+  const int rssi[] = {-40, -60, -80, -70};
+  CHECK(pickNetwork(saved, seen, rssi, 4) == 1);  // phone is stronger than home
+  const int rssi2[] = {-40, -90, -50, -70};
+  CHECK(pickNetwork(saved, seen, rssi2, 4) == 0);
+  CHECK(pickNetwork(saved, seen, rssi, 1) == -1);  // only the neighbour
+  const char* onlyPhone[2] = {"", "GKphone"};
+  CHECK(pickNetwork(onlyPhone, seen, rssi, 4) == 1);
+  const char* none[2] = {"", ""};
+  CHECK(pickNetwork(none, seen, rssi, 4) == -1);
+}
+
 static void testBookSync() {
   CHECK(safeBookName("2026-06-06 SİNYAL #08 · Hasat- Döngüyü Tamamlamak.epub"));
   CHECK(safeBookName("not.TXT"));
@@ -550,6 +564,7 @@ int main() {
   testWifiFlow();
   testSyncLogic();
   testBookSync();
+  testPickNetwork();
   testLibraryModel();
   testShelfLayout();
   testLibraryNavigation();

@@ -225,6 +225,8 @@ void loadSyncSettings(SyncSettings& s) {
   if (!p.begin(kNamespace, true)) return;
   p.getString("ssid", s.ssid, sizeof s.ssid);
   p.getString("pass", s.pass, sizeof s.pass);
+  if (p.isKey("ssid2")) p.getString("ssid2", s.ssid2, sizeof s.ssid2);
+  if (p.isKey("pass2")) p.getString("pass2", s.pass2, sizeof s.pass2);
   p.getString("token", s.token, sizeof s.token);
   if (p.isKey("repo")) p.getString("repo", s.repo, sizeof s.repo);
   if (p.isKey("branch")) p.getString("branch", s.branch, sizeof s.branch);
@@ -236,6 +238,8 @@ void saveSyncSettings(const SyncSettings& s) {
   if (!p.begin(kNamespace, false)) return;
   p.putString("ssid", s.ssid);
   p.putString("pass", s.pass);
+  p.putString("ssid2", s.ssid2);
+  p.putString("pass2", s.pass2);
   p.putString("token", s.token);
   p.putString("repo", s.repo);
   p.putString("branch", s.branch);
@@ -257,12 +261,49 @@ SyncOutcome runSync(const SyncSettings& s, TaskList& tasks, const Library* lib, 
     return out;
   }
 
+  // Join whichever saved network is around (home or phone), strongest first.
   WiFi.mode(WIFI_STA);
-  WiFi.begin(s.ssid, s.pass);
-  const uint32_t start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < kWifiTimeoutMs) delay(100);
-  if (WiFi.status() != WL_CONNECTED) {
-    snprintf(out.message, sizeof out.message, "Ev Wi-Fi'ına bağlanılamadı");
+  const char* saved[2] = {s.ssid, s.ssid2};
+  const char* pass[2] = {s.pass, s.pass2};
+  int pick = -1;
+  const int found = WiFi.scanNetworks(false, true);
+  if (found > 0) {
+    const int n = found > 24 ? 24 : found;
+    String names[24];
+    const char* seen[24];
+    int rssi[24];
+    for (int i = 0; i < n; ++i) {
+      names[i] = WiFi.SSID(i);
+      seen[i] = names[i].c_str();
+      rssi[i] = WiFi.RSSI(i);
+    }
+    pick = pickNetwork(saved, seen, rssi, n);
+  }
+  WiFi.scanDelete();
+  // Not in the scan (hidden network, or the scan failed): try them in order.
+  int order[2] = {pick, -1};
+  if (pick < 0) {
+    order[0] = s.ssid[0] ? 0 : 1;
+    order[1] = (order[0] == 0 && s.ssid2[0]) ? 1 : -1;
+  }
+  bool joined = false;
+  wl_status_t last = WL_IDLE_STATUS;
+  for (int k = 0; k < 2 && !joined && order[k] >= 0; ++k) {
+    WiFi.begin(saved[order[k]], pass[order[k]]);
+    const uint32_t start = millis();
+    while ((last = WiFi.status()) != WL_CONNECTED && millis() - start < kWifiTimeoutMs) delay(100);
+    joined = last == WL_CONNECTED;
+    if (joined) Serial.printf("[x3] joined %s\n", saved[order[k]]);
+    else WiFi.disconnect();
+  }
+  if (!joined) {
+    if (pick < 0 && found >= 0) {
+      snprintf(out.message, sizeof out.message, "Kayıtlı Wi-Fi bulunamadı");
+    } else if (last == WL_CONNECT_FAILED || last == WL_NO_SSID_AVAIL) {
+      snprintf(out.message, sizeof out.message, "Wi-Fi şifresi yanlış olabilir");
+    } else {
+      snprintf(out.message, sizeof out.message, "Wi-Fi'a bağlanılamadı");
+    }
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
     return out;

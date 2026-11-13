@@ -53,12 +53,14 @@ progress{width:100%;height:6px;margin-top:12px;accent-color:var(--lila)}
 <form id="sf">
 <label class="fld"><span>EV WI-FI ADI</span><input name="ssid" id="s_ssid" autocomplete="off"></label>
 <label class="fld"><span>EV WI-FI ŞİFRESİ</span><input name="pass" type="password" id="s_pass" placeholder="değiştirmek için yaz" autocomplete="new-password"></label>
+<label class="fld"><span>İKİNCİ WI-FI ADI (TELEFON)</span><input name="ssid2" id="s_ssid2" placeholder="isteğe bağlı" autocomplete="off"></label>
+<label class="fld"><span>İKİNCİ WI-FI ŞİFRESİ</span><input name="pass2" type="password" id="s_pass2" placeholder="değiştirmek için yaz" autocomplete="new-password"></label>
 <label class="fld"><span>GITHUB ERİŞİM ANAHTARI</span><input name="token" type="password" id="s_token" placeholder="değiştirmek için yaz" autocomplete="off"></label>
 <label class="fld"><span>Depo</span><input name="repo" id="s_repo" placeholder="gkcnkl/x3-sync" autocomplete="off"></label>
 <label class="fld"><span>Dal</span><input name="branch" id="s_branch" placeholder="main" autocomplete="off"></label>
 <div class="row"><button type="submit">Kaydet</button><span class="pill" id="sst" hidden></span></div>
 </form>
-<div class="note">Cihaz uyanınca (en çok yarım saatte bir) ev Wi-Fi'ına bağlanır, depodaki <code>brifing.txt</code>'yi alır, tamamladığın görevleri <code>cihaz.txt</code> olarak geri yazar ve saati internetten ayarlar. Anahtar yalnız bu depoya, yalnız "Contents" izniyle olmalı; cihaz onu hiçbir zaman geri göstermez.</div>
+<div class="note">Cihaz uyanınca (en çok yarım saatte bir) çevrede hangi kayıtlı ağ varsa (ev ya da telefon) ona bağlanır, depodaki <code>brifing.txt</code>'yi alır, tamamladığın görevleri <code>cihaz.txt</code> olarak geri yazar ve saati internetten ayarlar. Anahtar yalnız bu depoya, yalnız "Contents" izniyle olmalı; cihaz onu hiçbir zaman geri göstermez.</div>
 </div>
 
 <div class="sec">
@@ -236,7 +238,8 @@ function loadSettings(){
     document.getElementById('s_ssid').value=c[0]||'';
     document.getElementById('s_repo').value=c[1]||'';
     document.getElementById('s_branch').value=c[2]||'';
-    si.textContent=c[3]?('Anahtar kayıtlı ('+c[3]+')'+(c[4]==='1'?' · Wi-Fi şifresi kayıtlı':'')):'Eşitleme henüz ayarlanmadı.';
+    document.getElementById('s_ssid2').value=c[5]||'';
+    si.textContent=c[3]?('Kayıtlı: anahtar '+c[3]+(c[4]==='1'?' · ev Wi-Fi şifresi':'')+(c[6]==='1'?' · ikinci Wi-Fi şifresi':'')+'. Değiştirmediğin alanlar olduğu gibi kalır; şifre ve anahtar alanlarını boş bırakırsan eskisi korunur.'):'Eşitleme henüz ayarlanmadı.';
   }).catch(function(){si.textContent='Ayarlar okunamadı.'});
 }
 document.getElementById('sf').onsubmit=function(e){
@@ -244,7 +247,7 @@ document.getElementById('sf').onsubmit=function(e){
   var body=new URLSearchParams(new FormData(e.target));
   sshow('Kaydediliyor…');
   fetch('/ayarlar',{method:'POST',body:body}).then(function(r){return r.text()}).then(function(m){
-    sshow(m);document.getElementById('s_pass').value='';document.getElementById('s_token').value='';loadSettings();
+    sshow(m);['s_pass','s_pass2','s_token'].forEach(function(i){document.getElementById(i).value=''});loadSettings();
   }).catch(function(){sshow('Kaydedilemedi')});
 };
 loadSettings();

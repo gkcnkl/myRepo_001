@@ -33,6 +33,11 @@ bool buildPutBody(const char* message, const char* base64, const char* sha, cons
 size_t buildDeviceStateFile(const TaskList& tasks, const Library* lib, const char* stamp, char* out,
                             size_t outSize);
 
+// Picks which saved network to join from a Wi-Fi scan: the saved one seen
+// with the strongest signal. `saved` holds up to 2 names ("" = unused);
+// returns its index, or -1 when none of them is in the scan.
+int pickNetwork(const char* const saved[2], const char* const seen[], const int rssi[], int seenCount);
+
 // --- Books from the repository's kitaplar/ folder ------------------------------
 
 struct RemoteBook {
