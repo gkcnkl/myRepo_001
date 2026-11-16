@@ -653,11 +653,17 @@ void spine(Adafruit_GFX& g, const BookInfo& b, const SpineBox& box, bool selecte
     g.drawRect(box.x, box.y, box.w, box.h, 1);
     g.drawRect(box.x + 1, box.y + 1, box.w - 2, box.h - 2, 1);
   }
-  // Classic spine bands near the head and the foot.
-  g.drawFastHLine(box.x + 4, box.y + 10, box.w - 8, ink);
-  g.drawFastHLine(box.x + 4, box.y + 13, box.w - 8, ink);
-  g.drawFastHLine(box.x + 4, box.y + box.h - 14, box.w - 8, ink);
-  g.drawFastHLine(box.x + 4, box.y + box.h - 11, box.w - 8, ink);
+  if (b.fromRepo) {
+    // A newsletter: one thin rule at the head and the foot, the title in plain sans.
+    g.drawFastHLine(box.x + 6, box.y + 11, box.w - 12, ink);
+    g.drawFastHLine(box.x + 6, box.y + box.h - 12, box.w - 12, ink);
+  } else {
+    // A book: classic double bands near the head and the foot.
+    g.drawFastHLine(box.x + 4, box.y + 10, box.w - 8, ink);
+    g.drawFastHLine(box.x + 4, box.y + 13, box.w - 8, ink);
+    g.drawFastHLine(box.x + 4, box.y + box.h - 14, box.w - 8, ink);
+    g.drawFastHLine(box.x + 4, box.y + box.h - 11, box.w - 8, ink);
+  }
   // Bookmark ribbon on books being read.
   if (b.lastRead != 0 && !b.finished) {
     const int16_t rx = box.x + box.w - 12;
@@ -671,7 +677,8 @@ void spine(Adafruit_GFX& g, const BookInfo& b, const SpineBox& box, bool selecte
   Encoded e(b.title);
   const GFXfont* f = nullptr;
   int16_t capH = 0;
-  if (box.w >= 44 && advanceWidth(&Play26, e.s) <= room) f = &Play26, capH = 18;
+  if (b.fromRepo) f = &InterMed18, capH = 13;  // always one line, truncated
+  else if (box.w >= 44 && advanceWidth(&Play26, e.s) <= room) f = &Play26, capH = 18;
   else if (advanceWidth(&InterMed18, e.s) <= room || box.w < 56) f = &InterMed18, capH = 13;
   if (f != nullptr) {
     fitAdvance(f, e.s, room);

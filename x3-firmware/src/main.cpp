@@ -30,6 +30,7 @@
 #include "reader/book_reader.h"
 #include "sd_storage.h"
 #include "sync.h"
+#include "sync_logic.h"
 #include "ui.h"
 #include "webpage.h"
 #include "web/font_i400.h"
@@ -275,6 +276,8 @@ void scanLibrary() {
   SdMan.ensureDirectoryExists(kBooksDir);
   FsFile dir = SdMan.open(kBooksDir, O_RDONLY);
   if (!dir) return;
+  // Files the sync mirrored from the repo (newsletters, scan reports) get a thin, plain spine.
+  const String mirrored = SdMan.readFile("/kitaplar/.x3/esitlenen.txt");
   FsFile f;
   char name[96];
   while (lib.count < Library::kMax && f.openNext(&dir, O_RDONLY)) {
@@ -285,6 +288,7 @@ void scanLibrary() {
     if (isDir) continue;
     BookInfo& b = lib.books[lib.count];
     if (!bookFromFileName(name, size, b)) continue;
+    b.fromRepo = manifestFind(mirrored.c_str(), name, nullptr, 0);
     char path[96];
     snprintf(path, sizeof path, "%s/%s/durum.txt", kBookStateDir, b.id);
     FsFile st = SdMan.open(path, O_RDONLY);

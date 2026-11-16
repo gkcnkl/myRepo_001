@@ -164,6 +164,7 @@ int Library::inProgress(const BookInfo** out, int max) const {
 int16_t ShelfLayout::spineWidth(const BookInfo& b) {
   // ~44 px for a short story up to ~74 px for a long novel (log-ish scale):
   // wide enough for the 18 px title type.
+  if (b.fromRepo) return kRepoSpineW;  // newsletters: all the same thin spine
   uint32_t kb = b.size / 1024;
   int16_t w = 44;
   while (kb > 64 && w < 74) {

@@ -291,6 +291,16 @@ static void testCleanTitle() {
   CHECK(strcmp(plain, "Dubliners") == 0);
 }
 
+static void testRepoSpine() {
+  BookInfo book, news;
+  CHECK(bookFromFileName("roman.epub", 2000 * 1024, book));
+  CHECK(bookFromFileName("bulten.epub", 2000 * 1024, news));
+  CHECK(!book.fromRepo);
+  news.fromRepo = true;
+  CHECK(ShelfLayout::spineWidth(news) == ShelfLayout::kRepoSpineW);
+  CHECK(ShelfLayout::spineWidth(book) > ShelfLayout::kRepoSpineW);
+}
+
 static void testLibraryModel() {
   BookInfo b;
   CHECK(bookFromFileName("Kürk_Mantolu_Madonna.EPUB", 300000, b));
@@ -737,6 +747,7 @@ static void testClock() {
 int main() {
   testClock();
   testCleanTitle();
+  testRepoSpine();
   testParse();
   testBriefingFormat();
   testUpper();

@@ -19,6 +19,7 @@ struct BookInfo {
   char author[64];
   uint32_t size;      // bytes, sets the spine thickness
   bool isText;        // .txt instead of .epub
+  bool fromRepo;      // mirrored from the sync repo (a newsletter or a scan report): a plain, thin spine
   // Reading state (persisted in /kitaplar/.x3/<id>/durum.txt).
   DateStamp started;  // first opened
   uint64_t lastRead;  // yyyymmddhhmm, 0 = never; sorts the lending card
@@ -69,6 +70,7 @@ struct ShelfLayout {
   static constexpr int kShelves = 3;           // visible at once
   static constexpr int16_t kGap = 3;
   static constexpr int16_t kAddW = 40;         // the "+ Ekle" spine
+  static constexpr int16_t kRepoSpineW = 38;   // a newsletter from the sync repo
 
   // Spine thickness from the file size; height varies a little per book.
   static int16_t spineWidth(const BookInfo& b);

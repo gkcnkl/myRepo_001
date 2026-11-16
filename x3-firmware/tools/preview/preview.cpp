@@ -152,6 +152,7 @@ int main(int argc, char** argv) {
           BookInfo& b = mine.lib.books[mine.lib.count];
           if (!bookFromFileName(name, 300 * 1024, b)) continue;
           b.percent = static_cast<uint8_t>(pct);
+          b.fromRepo = name[0] >= '0' && name[0] <= '9';  // dated names come from the repo (newsletters)
           if (pct) b.lastRead = 202611100000ull + pct;
           ++mine.lib.count;
         }
