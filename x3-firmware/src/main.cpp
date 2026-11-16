@@ -32,6 +32,10 @@
 #include "sync.h"
 #include "ui.h"
 #include "webpage.h"
+#include "web/font_i400.h"
+#include "web/font_i500.h"
+#include "web/font_i600.h"
+#include "web/font_p500.h"
 
 // The reading engine (expat, stb_truetype, JPEG/PNG decode) needs more than
 // Arduino's default 8 KB loop stack, as CrossPoint found on the same chip.
@@ -437,7 +441,7 @@ void loadTypography() {
   reader::Typography t;
   Preferences p;
   if (p.begin("x3read", true)) {
-    t.sizePx = p.getUChar("size", t.sizePx);
+    t.sizePx = p.getUChar("size2", t.sizePx);  // "size2": the larger presets of v0.21 start from their own default
     t.lineSpacingPct = p.getUChar("space", t.lineSpacingPct);
     t.marginX = p.getUChar("margin", t.marginX);
     p.end();
@@ -450,7 +454,7 @@ void saveTypography(const reader::Typography& t) {
   Preferences p;
   if (!p.begin("x3read", false)) return;
   const reader::Typography& s = reader::typography();
-  p.putUChar("size", s.sizePx);
+  p.putUChar("size2", s.sizePx);
   p.putUChar("space", s.lineSpacingPct);
   p.putUChar("margin", s.marginX);
   p.end();
@@ -517,7 +521,7 @@ bool openSelectedBook() {
   openBookIndex = index;
   readerPageTurns = 0;
   // First open: take the title/author from the book and stamp the start date.
-  if (bookReader.title()[0]) snprintf(b.title, sizeof b.title, "%s", bookReader.title());
+  if (bookReader.title()[0]) snprintf(b.title, sizeof b.title, "%s", bookReader.title()), cleanTitle(b.title);
   if (bookReader.author()[0]) snprintf(b.author, sizeof b.author, "%s", bookReader.author());
   LocalTime t;
   if (!b.started.known() && currentTime(t)) b.started = DateStamp{t.year, t.month, t.day};
@@ -570,6 +574,12 @@ void render(bool screenChange, bool deepClean = false) {
 // --- Wi-Fi transfer: hotspot + web page --------------------------------------
 
 void handlePage() { server.send_P(200, "text/html; charset=utf-8", kTransferPage); }
+
+// The design system's fonts (Playfair Display, Inter): the hotspot has no internet.
+void sendFont(const uint8_t* data, uint32_t size) {
+  server.sendHeader("Cache-Control", "max-age=31536000, immutable");
+  server.send_P(200, "font/woff2", reinterpret_cast<const char*>(data), size);
+}
 
 void handleGetBriefing() {
   app.tasks.serialize(gTextBuf, sizeof gTextBuf);
@@ -729,6 +739,10 @@ void startWifi() {
   }
   snprintf(app.wifiUrl, sizeof app.wifiUrl, "http://%s", WiFi.softAPIP().toString().c_str());
   server.on("/", HTTP_GET, handlePage);
+  server.on("/f/p500.woff2", HTTP_GET, [] { sendFont(kWebFont_p500, kWebFont_p500_size); });
+  server.on("/f/i400.woff2", HTTP_GET, [] { sendFont(kWebFont_i400, kWebFont_i400_size); });
+  server.on("/f/i500.woff2", HTTP_GET, [] { sendFont(kWebFont_i500, kWebFont_i500_size); });
+  server.on("/f/i600.woff2", HTTP_GET, [] { sendFont(kWebFont_i600, kWebFont_i600_size); });
   server.on("/brifing.txt", HTTP_GET, handleGetBriefing);
   server.on("/brifing", HTTP_POST, handlePostBriefing);
   server.on("/saat", HTTP_POST, handlePostTime);

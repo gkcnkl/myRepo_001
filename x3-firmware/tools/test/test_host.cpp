@@ -152,15 +152,15 @@ static void testListNavigation() {
   const int n = a.tasks.count;
   CHECK(n == 5);
   CHECK(a.tasks.sectionCount == 2 && a.tasks.items[4].section == 1);
-  a.onButton(Button::Up, 0);
+  a.onButton(Button::Left, 0);
   CHECK(a.selected == n - 1);  // wraps to the bottom
-  a.onButton(Button::Down, 0);
+  a.onButton(Button::Right, 0);
   CHECK(a.selected == 0);
   Effects fx = a.onButton(Button::Confirm, 0);
   CHECK(fx.save && fx.redraw && a.tasks.items[0].started && !a.tasks.items[0].done);
   fx = a.onButton(Button::Confirm, 0);
   CHECK(a.tasks.items[0].done && !a.tasks.items[0].started);
-  fx = a.onButton(Button::Back, 0);  // BACK opens the bookshelf
+  fx = a.onButton(Button::Up, 0);  // the left side key opens the bookshelf
   CHECK(fx.redraw && a.screen == Screen::Library);
   CHECK(a.onButton(Button::Power, 0).sleep);
 }
@@ -172,16 +172,16 @@ static void testScroll() {
   a.tasks.parse(f, strlen(f));
   CHECK(a.rowsFrom(0) < 20);
   for (int i = 0; i < 17; ++i) {
-    a.onButton(Button::Down, 0);
+    a.onButton(Button::Right, 0);
     CHECK(a.selected >= a.scroll && a.selected < a.scroll + a.rowsFrom(a.scroll));  // always on screen
   }
   CHECK(a.selected == 17 && a.scroll > 0);
-  a.onButton(Button::Up, 0);
+  a.onButton(Button::Left, 0);
   CHECK(a.selected == 16 && a.selected < a.scroll + a.rowsFrom(a.scroll));
-  a.onButton(Button::Down, 0);
-  a.onButton(Button::Down, 0);
-  a.onButton(Button::Down, 0);
-  a.onButton(Button::Down, 0);  // wraps to 0
+  a.onButton(Button::Right, 0);
+  a.onButton(Button::Right, 0);
+  a.onButton(Button::Right, 0);
+  a.onButton(Button::Right, 0);  // wraps to 0
   CHECK(a.selected == 0 && a.scroll == 0);
 }
 
@@ -189,7 +189,7 @@ static void testFocusFlow() {
   App a;
   a.tasks.loadSample();
   a.selected = 2;
-  Effects fx = a.onButton(Button::Right, 1000);
+  Effects fx = a.onButton(Button::Back, 1000);  // BACK starts a focus session
   CHECK(a.screen == Screen::Focus && a.focusTask == 2 && fx.fullRefresh);
   CHECK(a.focusMinutesLeft(1000) == 25);
   CHECK(a.focusMinutesLeft(1000 + 60000) == 24);
@@ -219,7 +219,7 @@ static void testFocusFlow() {
 static void testFocusCancel() {
   App a;
   a.tasks.loadSample();
-  a.onButton(Button::Right, 0);
+  a.onButton(Button::Back, 0);
   a.onButton(Button::Back, 1000);
   CHECK(a.screen == Screen::List);
   CHECK(!a.tasks.items[0].done);
@@ -228,7 +228,7 @@ static void testFocusCancel() {
 static void testIdleSleep() {
   App a;
   a.tasks.loadSample();
-  a.onButton(Button::Down, 1000);
+  a.onButton(Button::Right, 1000);
   CHECK(!a.onTick(1000 + App::kIdleSleepMs - 1).sleep);
   CHECK(a.onTick(1000 + App::kIdleSleepMs).sleep);
 }
@@ -236,9 +236,9 @@ static void testIdleSleep() {
 static void testWifiFlow() {
   App a;
   a.tasks.loadSample();
-  Effects fx = a.onButton(Button::Left, 0);
+  Effects fx = a.onButton(Button::Down, 0);  // the right side key: Wi-Fi page (sync not set up)
   CHECK(a.screen == Screen::Wifi && fx.startWifi && fx.redraw);
-  CHECK(!a.onButton(Button::Down, 0).redraw);  // list keys do nothing here
+  CHECK(!a.onButton(Button::Right, 0).redraw);  // list keys do nothing here
   // The page restarts the idle timer; 10 minutes without use closes it.
   a.touch(5 * 60000);
   CHECK(!a.onTick(5 * 60000 + App::kIdleSleepMs).sleep);  // the short list timeout does not apply
@@ -248,26 +248,47 @@ static void testWifiFlow() {
   App b;
   b.tasks.loadSample();
   b.selected = 4;
-  b.onButton(Button::Left, 0);
+  b.onButton(Button::Down, 0);
   b.tasks.parse("[ ] tek\n", 8);  // an upload replaced the list with one task
   fx = b.onButton(Button::Back, 1000);
   CHECK(b.screen == Screen::List && fx.stopWifi && fx.redraw);
   CHECK(b.selected == 0);
-  fx = b.onButton(Button::Left, 2000);
+  fx = b.onButton(Button::Down, 2000);
   CHECK(b.onButton(Button::Power, 3000).stopWifi);
 
-  App synced;  // set up: SOL syncs directly, no hotspot
+  App synced;  // set up: the right side key syncs directly, no hotspot
   synced.tasks.loadSample();
   synced.syncConfigured = true;
-  fx = synced.onButton(Button::Left, 0);
+  fx = synced.onButton(Button::Down, 0);
   CHECK(fx.syncNow && !fx.startWifi && synced.screen == Screen::List);
 
   App empty;  // works with an empty list too
-  CHECK(empty.onButton(Button::Left, 0).startWifi);
+  CHECK(empty.onButton(Button::Down, 0).startWifi);
   CHECK(!empty.onButton(Button::Confirm, 0).syncNow);  // sync not configured: nothing
   empty.syncConfigured = true;
   fx = empty.onButton(Button::Confirm, 0);
   CHECK(fx.syncNow && fx.stopWifi && empty.screen == Screen::List);
+}
+
+static void testCleanTitle() {
+  BookInfo b;
+  CHECK(bookFromFileName("2026-03-03 [Bülten 12] Haftanın notları.epub", 9000, b));
+  CHECK(strcmp(b.title, "Haftanın notları") == 0);
+  char t[96] = "[Seri 04]  Uzun bir okuma [x]";
+  cleanTitle(t);
+  CHECK(strcmp(t, "Uzun bir okuma") == 0);
+  char only[96] = "[Sadece köşeli]";
+  cleanTitle(only);
+  CHECK(strcmp(only, "[Sadece köşeli]") == 0);  // nothing else left: keep it
+  char dated[96] = "2026-06-06 Sayı #08 · Başlık- Alt başlık";
+  cleanTitle(dated);
+  CHECK(strcmp(dated, "Sayı #08 · Başlık- Alt başlık") == 0);
+  char year[96] = "1984";
+  cleanTitle(year);
+  CHECK(strcmp(year, "1984") == 0);
+  char plain[96] = "Dubliners";
+  cleanTitle(plain);
+  CHECK(strcmp(plain, "Dubliners") == 0);
 }
 
 static void testLibraryModel() {
@@ -338,7 +359,7 @@ static void testShelfLayout() {
 static void testLibraryNavigation() {
   App a;
   a.tasks.loadSample();
-  Effects fx = a.onButton(Button::Back, 0);  // briefing -> shelf
+  Effects fx = a.onButton(Button::Up, 0);  // briefing -> shelf (left side key)
   CHECK(a.screen == Screen::Library && fx.redraw);
   // Empty shelf: only "+ Ekle"; TAMAM opens Wi-Fi and BACK there returns here.
   CHECK(a.libSelected == 0);
@@ -505,11 +526,11 @@ static void testMeasuresOnlySection() {
   App a;
   a.tasks = t;
   a.selected = 0;
-  a.onButton(Button::Down, 0);
+  a.onButton(Button::Right, 0);
   CHECK(a.selected == 1);
   Effects fx = a.onButton(Button::Confirm, 0);
   CHECK(!a.tasks.items[1].done && !a.tasks.items[1].cancelled && !fx.save);
-  a.onButton(Button::Right, 0);
+  a.onButton(Button::Back, 0);
   CHECK(a.screen == Screen::List);  // no focus timer on the measures block
   TaskList again;
   again.parse(out, strlen(out));
@@ -533,7 +554,7 @@ static void testSortFinished() {
   a.onButton(Button::Confirm, 0);  // started
   a.onButton(Button::Confirm, 0);  // done
   CHECK(strcmp(a.tasks.items[2].text, "e") == 0 && a.tasks.items[2].done);
-  a.onButton(Button::Back, 0);  // to the shelf
+  a.onButton(Button::Up, 0);  // to the shelf
   a.onButton(Button::Back, 0);  // and back: sorted
   CHECK(a.screen == Screen::List && strcmp(a.tasks.items[2].text, "f") == 0);
 }
@@ -715,6 +736,7 @@ static void testClock() {
 
 int main() {
   testClock();
+  testCleanTitle();
   testParse();
   testBriefingFormat();
   testUpper();

@@ -465,9 +465,11 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
     textCentered(g, &Inter14, "Açmak için GÜÇ tuşuna bas", kBarTop + 54, 0);
     return;
   }
-  const char* hint = t.count == 0 ? "GERİ tazele  ·  GÜÇ uyku"
-                                  : app.syncConfigured ? "TAMAM durum  ·  SOL eşitle  ·  SAĞ odak"
-                                                    : "TAMAM durum  ·  SOL Wi-Fi  ·  SAĞ odak";
+  // Side keys: left = shelf, right = sync (Wi-Fi page when not set up).
+  const char* hint = t.count == 0 ? (app.syncConfigured ? "sol yan raf  ·  sağ yan eşitle"
+                                                        : "sol yan raf  ·  sağ yan Wi-Fi")
+                                  : app.syncConfigured ? "TAMAM durum  ·  GERİ odak  ·  yan: raf / eşitle"
+                                                    : "TAMAM durum  ·  GERİ odak  ·  yan: raf / Wi-Fi";
   const char* right = !app.sdAvailable ? "SD kart yok" : app.syncNote[0] ? app.syncNote : weekdayOf(app, wd, sizeof wd);
   statusBar(g, done, right, hint);
 }
@@ -669,9 +671,8 @@ void spine(Adafruit_GFX& g, const BookInfo& b, const SpineBox& box, bool selecte
   Encoded e(b.title);
   const GFXfont* f = nullptr;
   int16_t capH = 0;
-  if (box.w >= 34 && advanceWidth(&Play18, e.s) <= room) f = &Play18, capH = 12;
-  else if (box.w >= 34 && advanceWidth(&InterMed18, e.s) <= room) f = &InterMed18, capH = 13;
-  else if (advanceWidth(&Inter14, e.s) <= room || box.w < 44) f = &Inter14, capH = 10;
+  if (box.w >= 44 && advanceWidth(&Play26, e.s) <= room) f = &Play26, capH = 18;
+  else if (advanceWidth(&InterMed18, e.s) <= room || box.w < 56) f = &InterMed18, capH = 13;
   if (f != nullptr) {
     fitAdvance(f, e.s, room);
     const int16_t len = advanceWidth(f, e.s);
@@ -684,19 +685,20 @@ void spine(Adafruit_GFX& g, const BookInfo& b, const SpineBox& box, bool selecte
   for (size_t i = 1; i < n; ++i)
     if (e.s[i] == ' ' && (cut == 0 || (i > n / 2 ? i - n / 2 : n / 2 - i) < (cut > n / 2 ? cut - n / 2 : n / 2 - cut)))
       cut = i;
+  const GFXfont* two = &InterMed18;
   if (cut == 0) {  // one long word: never break it, truncate instead
-    fitAdvance(&Inter14, e.s, room);
-    drawRotatedEnc(g, &Inter14, e.s, box.x + box.w / 2 + 5, box.y + 16 + (room + advanceWidth(&Inter14, e.s)) / 2, ink);
+    fitAdvance(two, e.s, room);
+    drawRotatedEnc(g, two, e.s, box.x + box.w / 2 + 6, box.y + 16 + (room + advanceWidth(two, e.s)) / 2, ink);
     return;
   }
   char a[210], c[210];
   snprintf(a, sizeof a, "%.*s", static_cast<int>(cut), e.s);
   snprintf(c, sizeof c, "%s", e.s + cut + (e.s[cut] == ' ' ? 1 : 0));
-  fitAdvance(&Inter14, a, room);
-  fitAdvance(&Inter14, c, room);
+  fitAdvance(two, a, room);
+  fitAdvance(two, c, room);
   const int16_t mid = box.x + box.w / 2;
-  drawRotatedEnc(g, &Inter14, a, mid - 2, box.y + 16 + (room + advanceWidth(&Inter14, a)) / 2, ink);
-  drawRotatedEnc(g, &Inter14, c, mid + 14, box.y + 16 + (room + advanceWidth(&Inter14, c)) / 2, ink);
+  drawRotatedEnc(g, two, a, mid - 4, box.y + 16 + (room + advanceWidth(two, a)) / 2, ink);
+  drawRotatedEnc(g, two, c, mid + 17, box.y + 16 + (room + advanceWidth(two, c)) / 2, ink);
 }
 
 void addSpine(Adafruit_GFX& g, const SpineBox& box, bool selected) {
@@ -785,11 +787,11 @@ void drawLibrary(Adafruit_GFX& g, const App& app) {
     else if (b.finished) snprintf(line, sizeof line, "%s%sbitti", b.author, b.author[0] ? " · " : "");
     else if (b.lastRead) snprintf(line, sizeof line, "%s%s%%%u · başladı %s", b.author, b.author[0] ? " · " : "", b.percent, stamp);
     else snprintf(line, sizeof line, "%s%shenüz açılmadı", b.author, b.author[0] ? " · " : "");
-    text(g, app.libStatus[0] ? &InterMed18 : &Inter14, line, kM, dy + 68, kW - 2 * kM);
+    text(g, &InterMed18, line, kM, dy + 72, kW - 2 * kM);
   } else {
     sectionHeading(g, "Kitap ekle", dy + 10);
-    text(g, &Inter14, "TAMAM: Wi-Fi'ı açar; telefondan EPUB ya da TXT yükle.", kM, dy + 40, kW - 2 * kM);
-    if (lib.count == 0) text(g, &Inter14, "Raflar şimdilik boş.", kM, dy + 60, kW - 2 * kM);
+    text(g, &InterMed18, "TAMAM: Wi-Fi'ı açar; telefondan EPUB ya da TXT yükle.", kM, dy + 44, kW - 2 * kM);
+    if (lib.count == 0) text(g, &InterMed18, "Raflar şimdilik boş.", kM, dy + 70, kW - 2 * kM);
   }
   if (app.libStatus[0] && app.libSelected >= lib.count) text(g, &InterMed18, app.libStatus, kM, dy + 84, kW - 2 * kM);
 

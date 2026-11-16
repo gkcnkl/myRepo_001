@@ -75,11 +75,11 @@ const char* lastError();
 // transfer page. Every combination lays out into its own page cache, and the
 // reading position survives a change (it is a character offset).
 struct Typography {
-  uint8_t sizePx = 27;          // body text size
+  uint8_t sizePx = 34;          // body text size
   uint8_t lineSpacingPct = 118; // line height in % of the size
   uint8_t marginX = 30;         // left and right page margin
 };
-constexpr uint8_t kSizePresets[] = {21, 24, 27, 30, 34};
+constexpr uint8_t kSizePresets[] = {27, 30, 34, 38, 42};
 constexpr uint8_t kSpacingPresets[] = {108, 118, 132};
 constexpr uint8_t kMarginPresets[] = {18, 30, 42};
 // Clamps a typography to the supported presets (nearest value).

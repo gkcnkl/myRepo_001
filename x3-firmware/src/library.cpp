@@ -44,6 +44,30 @@ int compareTitles(const void* a, const void* b) {
 
 }  // namespace
 
+void cleanTitle(char* title) {
+  char out[sizeof(BookInfo::title)];
+  size_t o = 0;
+  int depth = 0;
+  for (const char* p = title; *p && o + 1 < sizeof out; ++p) {
+    if (*p == '[') { ++depth; continue; }
+    if (*p == ']' && depth > 0) { --depth; continue; }
+    if (depth > 0) continue;
+    if (*p == ' ' && (o == 0 || out[o - 1] == ' ')) continue;  // no leading or double spaces
+    out[o++] = *p;
+  }
+  while (o > 0 && out[o - 1] == ' ') --o;
+  out[o] = '\0';
+  // A leading "YYYY-MM-DD " date (newsletter file names) goes too.
+  size_t skip = 0;
+  if (o > 11 && out[4] == '-' && out[7] == '-' && out[10] == ' ') {
+    bool digits = true;
+    for (int i = 0; i < 10; ++i)
+      if (i != 4 && i != 7) digits = digits && out[i] >= '0' && out[i] <= '9';
+    if (digits) skip = 11;
+  }
+  if (o > skip) memmove(title, out + skip, o - skip + 1);
+}
+
 bool bookFromFileName(const char* name, uint32_t size, BookInfo& out) {
   if (name[0] == '.' || name[0] == '\0') return false;
   const bool epub = endsWithNoCase(name, ".epub");
@@ -59,6 +83,7 @@ bool bookFromFileName(const char* name, uint32_t size, BookInfo& out) {
   copy(out.title, sizeof out.title, name, stem);
   for (char* p = out.title; *p; ++p)
     if (*p == '_') *p = ' ';
+  cleanTitle(out.title);
   return true;
 }
 
@@ -80,7 +105,7 @@ void parseBookState(const char* data, size_t len, BookInfo& b) {
     char val[100];
     copy(val, sizeof val, v, vn);
     auto key = [&](const char* k) { return strlen(k) == klen && strncmp(line, k, klen) == 0; };
-    if (key("title")) copy(b.title, sizeof b.title, v, vn);
+    if (key("title")) copy(b.title, sizeof b.title, v, vn), cleanTitle(b.title);
     else if (key("author")) copy(b.author, sizeof b.author, v, vn);
     else if (key("started")) {
       int y = 0, m = 0, d = 0;
@@ -137,10 +162,11 @@ int Library::inProgress(const BookInfo** out, int max) const {
 }
 
 int16_t ShelfLayout::spineWidth(const BookInfo& b) {
-  // ~34 px for a short story up to ~64 px for a long novel (log-ish scale).
+  // ~44 px for a short story up to ~74 px for a long novel (log-ish scale):
+  // wide enough for the 18 px title type.
   uint32_t kb = b.size / 1024;
-  int16_t w = 32;
-  while (kb > 64 && w < 64) {
+  int16_t w = 44;
+  while (kb > 64 && w < 74) {
     kb /= 2;
     w += 6;
   }

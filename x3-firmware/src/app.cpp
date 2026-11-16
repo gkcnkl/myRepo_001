@@ -128,18 +128,21 @@ Effects App::onButton(Button b, uint32_t nowMs) {
 
   switch (screen) {
     case Screen::List:
-      if (b == Button::Back) {
+      // Side keys: left (UP) opens the shelf, right (DOWN) syncs (or opens the
+      // Wi-Fi page when sync is not set up). LEFT/RIGHT move the selection,
+      // BACK starts a focus session.
+      if (b == Button::Up) {
         screen = Screen::Library;
         keepShelfVisible();
         fx.redraw = fx.fullRefresh = fx.deepClean = true;
         break;
       }
-      if (b == Button::Left && syncConfigured) {
+      if (b == Button::Down && syncConfigured) {
         // Sync straight over the saved home/phone Wi-Fi: no hotspot needed.
         fx.syncNow = fx.redraw = true;
         break;
       }
-      if (b == Button::Left) {  // not set up yet: open the transfer page
+      if (b == Button::Down) {  // not set up yet: open the transfer page
         wifiReturn = Screen::List;
         screen = Screen::Wifi;
         wifiStatus[0] = '\0';
@@ -147,11 +150,11 @@ Effects App::onButton(Button b, uint32_t nowMs) {
         break;
       }
       if (tasks.count == 0) break;
-      if (b == Button::Up) {
+      if (b == Button::Left) {
         selected = (selected + tasks.count - 1) % tasks.count;
         keepSelectionVisible();
         fx.redraw = true;
-      } else if (b == Button::Down) {
+      } else if (b == Button::Right) {
         selected = (selected + 1) % tasks.count;
         keepSelectionVisible();
         fx.redraw = true;
@@ -172,7 +175,7 @@ Effects App::onButton(Button b, uint32_t nowMs) {
           t.started = true;
         }
         fx.redraw = fx.save = true;
-      } else if (b == Button::Right && !tasks.items[selected].placeholder) {
+      } else if (b == Button::Back && !tasks.items[selected].placeholder) {
         screen = Screen::Focus;
         focusTask = selected;
         focusStartMs = nowMs;

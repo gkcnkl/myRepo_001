@@ -28,6 +28,11 @@ struct BookInfo {
   bool finished;
 };
 
+// Removes "[...]" parts and a leading "YYYY-MM-DD " date from a shelf title
+// ("2026-03-03 [March 2026 Syllabus] Do they..." -> "Do they..."), squeezing the
+// spaces left behind. Keeps the text when nothing else remains.
+void cleanTitle(char* title);
+
 // One readable file name -> BookInfo with defaults (title from the name).
 bool bookFromFileName(const char* name, uint32_t size, BookInfo& out);
 

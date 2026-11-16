@@ -1,6 +1,6 @@
 #pragma once
 // Transfer page served by the device's hotspot (http://192.168.4.1/).
-// "Sabah Brifingi" look with system fonts only: the hotspot has no internet.
+// "Sabah Brifingi" design system; its fonts are served by the device (the hotspot has no internet).
 // On load it sends the browser's local time to /saat, then loads the
 // current briefing from /brifing.txt into the editor; "Kaydet" posts it back.
 
@@ -9,98 +9,131 @@ static const char kTransferPage[] = R"HTML(<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>X3 Brifing</title>
 <style>
-:root{--bg:#F4F3F1;--sand:#EFEDE9;--line:#D6D3CE;--ink:#1A1A1A;--body:#4A4744;--muted:#5E5A56;--lila:#7A5BB0;--mor:#3E2063;--lila-soft:#EAE4F7}
+/* "Sabah Brifingi" design system (tokens, Masthead, SectionHeading, RowList,
+   StatusLabel, EmptyState, FooterBar): one column up to 740px, hairlines, a
+   serif masthead, one lilac accent that always means a state. Its fonts are
+   served by the device. */
+@font-face{font-family:'Playfair Display';font-weight:500;font-display:swap;src:url(/f/p500.woff2) format('woff2')}
+@font-face{font-family:'Inter';font-weight:400;font-display:swap;src:url(/f/i400.woff2) format('woff2')}
+@font-face{font-family:'Inter';font-weight:500;font-display:swap;src:url(/f/i500.woff2) format('woff2')}
+@font-face{font-family:'Inter';font-weight:600;font-display:swap;src:url(/f/i600.woff2) format('woff2')}
+:root{color-scheme:light;--bg:#f4f3f1;--sand:#efede9;--line:#d6d3ce;--ink:#1a1a1a;--body:#4a4744;--muted:#5e5a56;--lila:#7a5bb0;--lila-soft:#eae4f7;--mor:#3e2063;
+--display:'Playfair Display',Georgia,'Times New Roman',serif;--text:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--body);font:15px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
-.wrap{max-width:740px;margin:0 auto;padding:28px 16px 40px}
-.eyebrow{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);font-weight:500}
-h1{font-family:'Playfair Display',Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:clamp(34px,9vw,48px);line-height:1.04;margin:8px 0 0}
+html,body{margin:0}
+body{background:var(--bg);color:var(--body);font-family:var(--text);font-size:15px;font-weight:400;line-height:1.55;-webkit-font-smoothing:antialiased;padding-bottom:72px;overflow-x:hidden}
+.wrap{max-width:740px;margin:0 auto;padding:30px max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px))}
+.eyebrow{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);font-weight:500;line-height:1.3}
+h1{font-family:var(--display);font-weight:500;color:var(--ink);font-size:clamp(34px,9vw,50px);line-height:1.04;margin:8px 0 0;letter-spacing:-.01em}
 .rule{height:2px;background:var(--ink);margin:14px 0 0}
-.dateline{padding:11px 0 0;font-size:11px;letter-spacing:.09em;font-weight:500;color:var(--muted)}
-.sec{margin-top:34px}
-h2{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink);font-weight:600;margin:0}
+.dateline{display:flex;gap:6px 16px;flex-wrap:wrap;align-items:baseline;padding:11px 0 0;font-size:11px;letter-spacing:.09em;font-weight:500;color:var(--muted);line-height:1.4;font-variant-numeric:tabular-nums}
+.dateline .d{color:var(--ink)}
+.fixed{margin:10px 0 0;font-size:13.5px;line-height:1.55;color:var(--body)}
+.sec{margin-top:38px}
+h2{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink);font-weight:600;margin:0;line-height:1.3}
 .hr{height:1px;background:var(--ink);margin-top:7px}
-textarea{width:100%;min-height:360px;margin-top:14px;padding:12px;background:var(--sand);border:1px solid var(--line);color:var(--ink);font:13px/1.6 ui-monospace,Menlo,Consolas,monospace;resize:vertical}
-textarea:focus{outline:2px solid var(--lila);outline-offset:2px}
-.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center}
-button,label.file{font:600 11px/1 -apple-system,sans-serif;letter-spacing:.14em;text-transform:uppercase;padding:13px 18px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;min-height:44px}
-label.file{background:transparent;color:var(--ink);display:inline-flex;align-items:center}
+.subhead{font-size:9.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:20px;line-height:1.3}
+.empty{font-size:13.5px;color:var(--body);padding:14px 0;border-bottom:1px solid var(--line)}
+.kaynak{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.55}
+code{font:inherit;color:var(--ink)}
+/* RowList, without the mark: a book is a row with a title and a meta line. */
+.row{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--line)}
+.rb{flex:1 1 auto;min-width:0}
+.rt{font-size:15px;color:var(--ink);font-weight:500;line-height:1.4;overflow-wrap:anywhere}
+.rm{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.55;font-variant-numeric:tabular-nums}
+/* StatusLabel: a word, never colour alone. */
+.state{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--lila);line-height:1.3}
+.state.late{color:var(--mor)}
+.rt .state{margin-left:8px;white-space:nowrap}
+/* Fields follow NoteField's frame (bg, 1px line, square; focus turns the border ink) in the text face. */
+.fld{display:block;margin-top:14px}
+.fld span{display:block;font-size:9.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:7px;line-height:1.3}
+.fld input,.fld select,textarea{width:100%;font:15px/1.4 var(--text);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:0;padding:11px 13px;min-height:44px;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.fld input::placeholder{color:var(--muted)}
+.fld input:focus,.fld select:focus,textarea:focus{outline:none;border-color:var(--ink)}
+textarea{min-height:320px;margin-top:14px;font:13.5px/1.6 var(--text);resize:vertical}
+/* Actions: the system has no buttons; the few this device page needs are
+   quiet uppercase labels on a 1px ink frame, 44px tall. */
+.acts{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;align-items:center}
+button,label.file{font:600 10.5px/1.3 var(--text);letter-spacing:.14em;text-transform:uppercase;color:var(--ink);background:transparent;border:1px solid var(--ink);border-radius:0;padding:0 16px;min-height:44px;display:inline-flex;align-items:center;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+button:focus-visible,label.file:focus-within{outline:2px solid var(--lila);outline-offset:2px}
+.row button{min-height:36px;padding:0 12px;border-color:var(--muted);color:var(--muted)}
 input[type=file]{display:none}
-.pill{display:inline-block;background:var(--lila-soft);color:var(--mor);border-radius:999px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;font-weight:600}
-.note{font-size:12px;color:var(--muted);margin-top:10px}
-.book{display:flex;gap:12px;align-items:center;padding:12px 2px;border-bottom:1px solid var(--line)}
-.book .t{flex:1;min-width:0;color:var(--ink);font-weight:500;overflow-wrap:anywhere}
-.book .m{font-size:12px;color:var(--muted);white-space:nowrap}
-.book button{padding:8px 12px;min-height:36px;background:transparent;color:var(--ink)}
-.empty{font-size:13.5px;color:var(--muted);padding:14px 2px;border-bottom:1px solid var(--line)}
-progress{width:100%;height:6px;margin-top:12px;accent-color:var(--lila)}
+.opt{font-size:13.5px;color:var(--body);display:inline-flex;gap:8px;align-items:center;min-height:44px}
+.opt input{width:18px;height:18px;margin:0;accent-color:var(--lila)}
+progress{width:100%;height:4px;margin-top:12px;accent-color:var(--lila)}
+details{margin-top:14px}
+summary{cursor:pointer;font-size:9.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--muted);font-weight:600;min-height:44px;display:flex;align-items:center}
+summary:focus-visible{outline:2px solid var(--lila);outline-offset:2px}
 [hidden]{display:none!important}
-.fld{display:block;margin-top:12px}
-.fld span{display:block;font-size:9.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
-.fld input,.fld select{width:100%;font:15px -apple-system,sans-serif;padding:11px 12px;background:var(--sand);border:1px solid var(--line);color:var(--ink);min-height:44px}
-.fld input:focus,.fld select:focus{outline:2px solid var(--lila);outline-offset:2px}
-.opt{font-size:13px;color:var(--ink);display:inline-flex;gap:8px;align-items:center;min-height:44px}
-.opt input{width:18px;height:18px;accent-color:var(--lila)}
+/* FooterBar */
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;justify-content:space-between;align-items:center;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:500;line-height:1.3}
+.bar b{font-family:var(--display);font-size:14px;font-weight:500;color:var(--ink);letter-spacing:0;font-variant-numeric:tabular-nums;line-height:1.4}
 </style></head><body><div class="wrap">
 <div class="eyebrow">XTEINK X3 · WI-FI AKTARIM</div>
 <h1>Aktarım</h1>
 <div class="rule"></div>
-<div class="dateline" id="clock">Saat ayarlanıyor…</div>
+<div class="dateline"><span class="d" id="clock">Saat ayarlanıyor…</span><span id="dl_books"></span><span id="dl_tasks"></span></div>
+<p class="fixed">Cihaz yarım saatte bir kayıtlı Wi-Fi'a bağlanıp depoyla eşitlenir. Bu sayfa yalnız ayar, kitap ve elle düzeltme içindir.</p>
 
 <div class="sec">
 <h2>Eşitleme</h2><div class="hr"></div>
-<div class="note" id="syncinfo">Yükleniyor…</div>
+<div class="kaynak" id="syncinfo">Yükleniyor…</div>
 <form id="sf">
 <label class="fld"><span>EV WI-FI ADI</span><input name="ssid" id="s_ssid" autocomplete="off"></label>
 <label class="fld"><span>EV WI-FI ŞİFRESİ</span><input name="pass" type="password" id="s_pass" placeholder="değiştirmek için yaz" autocomplete="new-password"></label>
 <label class="fld"><span>İKİNCİ WI-FI ADI (TELEFON)</span><input name="ssid2" id="s_ssid2" placeholder="isteğe bağlı" autocomplete="off"></label>
 <label class="fld"><span>İKİNCİ WI-FI ŞİFRESİ</span><input name="pass2" type="password" id="s_pass2" placeholder="değiştirmek için yaz" autocomplete="new-password"></label>
 <label class="fld"><span>GITHUB ERİŞİM ANAHTARI</span><input name="token" type="password" id="s_token" placeholder="değiştirmek için yaz" autocomplete="off"></label>
-<label class="fld"><span>Depo</span><input name="repo" id="s_repo" placeholder="gkcnkl/x3-sync" autocomplete="off"></label>
-<label class="fld"><span>Dal</span><input name="branch" id="s_branch" placeholder="main" autocomplete="off"></label>
-<div class="row"><button type="submit">Kaydet</button><span class="pill" id="sst" hidden></span></div>
+<label class="fld"><span>DEPO</span><input name="repo" id="s_repo" placeholder="gkcnkl/x3-sync" autocomplete="off"></label>
+<label class="fld"><span>DAL</span><input name="branch" id="s_branch" placeholder="main" autocomplete="off"></label>
+<div class="acts"><button type="submit">Kaydet</button><span class="state" id="sst" hidden></span></div>
 </form>
-<div class="note">Cihaz uyanınca (en çok yarım saatte bir) çevrede hangi kayıtlı ağ varsa (ev ya da telefon) ona bağlanır, depodaki <code>brifing.txt</code>'yi alır, tamamladığın görevleri <code>cihaz.txt</code> olarak geri yazar ve saati internetten ayarlar. Anahtar yalnız bu depoya, yalnız "Contents" izniyle olmalı; cihaz onu hiçbir zaman geri göstermez.</div>
+<div class="kaynak">Cihaz uyanınca (en çok yarım saatte bir) çevrede hangi kayıtlı ağ varsa (ev ya da telefon) ona bağlanır, depodaki <code>brifing.txt</code>'yi alır, tamamladığın görevleri <code>cihaz.txt</code> olarak geri yazar ve saati internetten ayarlar. Anahtar yalnız bu depoya, yalnız "Contents" izniyle olmalı; cihaz onu hiçbir zaman geri göstermez.</div>
 </div>
 
 <div class="sec">
 <h2>Okuma</h2><div class="hr"></div>
 <form id="rf">
 <label class="fld"><span>YAZI BOYUTU</span><select name="size" id="r_size">
-<option value="21">Küçük · 21</option><option value="24">Orta · 24</option><option value="27">Büyük · 27</option><option value="30">Daha büyük · 30</option><option value="34">En büyük · 34</option></select></label>
+<option value="27">Küçük · 27</option><option value="30">Orta · 30</option><option value="34">Büyük · 34</option><option value="38">Daha büyük · 38</option><option value="42">En büyük · 42</option></select></label>
 <label class="fld"><span>SATIR ARALIĞI</span><select name="space" id="r_space">
 <option value="108">Sık</option><option value="118">Normal</option><option value="132">Geniş</option></select></label>
 <label class="fld"><span>KENAR BOŞLUĞU</span><select name="margin" id="r_margin">
 <option value="18">Dar</option><option value="30">Normal</option><option value="42">Geniş</option></select></label>
-<p id="r_demo" style="margin:14px 0 4px;font-family:Georgia,'Times New Roman',serif;text-align:justify;hyphens:auto;border:1px solid var(--line);background:#fff;color:#111">Örnek paragraf: ekranda yaklaşık böyle görünür. Kitap okurken TAMAM tuşu da yazı boyutunu sırayla büyütür; okuduğun yer korunur.</p>
-<div class="row"><button type="submit">Kaydet</button><span class="pill" id="rst" hidden></span></div>
+<div class="subhead">ÖRNEK SAYFA</div>
+<p id="r_demo" style="margin:8px 0 4px;font-family:Georgia,'Times New Roman',serif;text-align:justify;hyphens:auto;border:1px solid var(--line);background:#fff;color:#111">Örnek paragraf: ekranda yaklaşık böyle görünür. Kitap okurken TAMAM tuşu da yazı boyutunu sırayla büyütür; okuduğun yer korunur.</p>
+<div class="acts"><button type="submit">Kaydet</button><span class="state" id="rst" hidden></span></div>
 </form>
-<div class="note">Değişiklik bir sonraki kitap açılışında geçerli olur. Her boyut ilk açılışta yeniden sayfalanır (birkaç saniye), sonra hızlıdır.</div>
+<div class="kaynak">Değişiklik bir sonraki kitap açılışında geçerli olur. Her boyut ilk açılışta yeniden sayfalanır (birkaç saniye), sonra hızlıdır.</div>
 </div>
 
 <div class="sec">
 <h2>Kitaplar</h2><div class="hr"></div>
 <div id="books"><div class="empty">Yükleniyor…</div></div>
-<div class="row">
+<div class="acts">
 <label class="file">Kitap ekle<input type="file" id="bf" accept=".epub,.txt,application/epub+zip,text/plain" multiple></label>
 <label class="opt"><input type="checkbox" id="fit" checked> Cihaza uygun hale getir</label>
-<span class="pill" id="bst" hidden></span>
+<span class="state" id="bst" hidden></span>
 </div>
 <progress id="bp" max="100" value="0" hidden></progress>
-<div class="note">EPUB (DRM'siz) ya da TXT. "Cihaza uygun hale getir" EPUB'ı yüklemeden önce bu tarayıcıda düzenler: gömülü fontları siler, resimleri ekran boyutuna (528×792) küçültüp gri tonlu yapar. Kitaplar SD karttaki <code>/kitaplar</code> klasörüne yazılır.</div>
+<div class="kaynak">Kaynak: SD karttaki <code>/kitaplar</code> klasörü, sayfa açılınca okundu. EPUB (DRM'siz) ya da TXT yüklenir. "Cihaza uygun hale getir" EPUB'ı yüklemeden önce bu tarayıcıda düzenler: gömülü fontları siler, resimleri ekran boyutuna (528×792) küçültüp gri tonlu yapar.</div>
 </div>
 
 <div class="sec">
-<h2>brifing.txt</h2><div class="hr"></div>
+<h2>Brifing dosyası</h2><div class="hr"></div>
+<details><summary>BRIFING.TXT DOSYASINI ELLE DÜZENLE</summary>
 <textarea id="t" spellcheck="false" placeholder="Yükleniyor…"></textarea>
-<div class="row">
+<div class="acts">
 <button id="save">Kaydet</button>
 <label class="file">Dosyadan yükle<input type="file" id="f" accept=".txt,text/plain"></label>
-<span class="pill" id="st" hidden></span>
 </div>
-<div class="note">Kaydedince cihaz dosyayı SD karta yazar ve ekranı yeniler. Biçim: <code>[x] 09:15-10:00 | Görev</code>, <code>## Bölüm</code>, <code>gosterge: Etiket | Değer | Ayrıntı</code>.</div>
+</details>
+<div class="acts" style="margin-top:6px"><span class="state" id="st" hidden></span></div>
+<div class="kaynak">Kaynak: cihazdaki liste, işaretlerinle birlikte. Kaydedince cihaz dosyayı SD karta yazar ve ekranı yeniler. Biçim: <code>[ ] 09:15-10:00 | Görev</code>, <code>## Bölüm</code>, <code>olcu: Etiket | değer | hedef | birim</code>.</div>
 </div>
 </div>
+<div class="bar"><span><b id="b_done">· / ·</b> tamamlandı</span><span id="b_day"></span></div>
 <script>
 // EPUB optimizer for the X3, all in the browser (the hotspot has no internet,
 // so no libraries): ZIP read/write with the native (De)CompressionStream.
@@ -183,25 +216,33 @@ window.x3Optimize = (function(){
 <script>
 (function(){
 var t=document.getElementById('t'),st=document.getElementById('st'),ck=document.getElementById('clock');
-function show(m){st.textContent=m;st.hidden=false}
+function mark(el,m){el.textContent=m;el.hidden=false;el.className='state'+(/amad|alınamad|okunamad|gönderilemed|kaydedilemed|hata/i.test(m)?' late':'')}
+function show(m){mark(st,m)}
 function p2(n){return(n<10?'0':'')+n}
 var d=new Date();
 var stamp=d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())+' '+p2(d.getHours())+':'+p2(d.getMinutes())+':'+p2(d.getSeconds());
 fetch('/saat',{method:'POST',body:stamp}).then(function(r){return r.text()}).then(function(m){ck.textContent=m}).catch(function(){ck.textContent='Saat ayarlanamadı'});
-fetch('/brifing.txt').then(function(r){return r.text()}).then(function(x){t.value=x}).catch(function(){show('Dosya okunamadı')});
+var DAYS=['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+document.getElementById('b_day').textContent=DAYS[d.getDay()];
+// FooterBar counter: done tasks / all tasks in the device's list.
+function tally(){var all=0,done=0;t.value.split('\n').forEach(function(l){var m=l.match(/^\[(.)\]/);if(m){all++;if(m[1]==='x')done++}});
+  document.getElementById('b_done').textContent=done+' / '+all;document.getElementById('dl_tasks').textContent=all+' görev'}
+t.oninput=tally;
+fetch('/brifing.txt').then(function(r){return r.text()}).then(function(x){t.value=x;tally()}).catch(function(){show('Dosya okunamadı')});
 document.getElementById('save').onclick=function(){
   show('Gönderiliyor…');
   fetch('/brifing',{method:'POST',body:t.value}).then(function(r){return r.text()}).then(show).catch(function(){show('Gönderilemedi')});
 };
 var books=document.getElementById('books'),bst=document.getElementById('bst'),bp=document.getElementById('bp');
-function bshow(m){bst.textContent=m;bst.hidden=false}
+function bshow(m){mark(bst,m)}
 function esc(x){return x.replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function loadBooks(){
   fetch('/kitaplar').then(function(r){return r.text()}).then(function(x){
     var rows=x.split('\n').filter(Boolean);
-    if(!rows.length){books.innerHTML='<div class="empty">Raflar boş.</div>';return}
+    document.getElementById('dl_books').textContent=rows.length+' kitap';
+    if(!rows.length){books.innerHTML='<div class="empty">Raflar boş: SD kartın /kitaplar klasöründe kitap yok.</div>';return}
     books.innerHTML=rows.map(function(r){var c=r.split('\t');
-      return '<div class="book"><span class="t">'+esc(c[1]||c[0])+'</span><span class="m">'+esc(c[2])+'</span><button data-n="'+esc(c[0])+'">Sil</button></div>'}).join('');
+      return '<div class="row"><div class="rb"><div class="rt">'+esc(c[1]||c[0])+'</div><div class="rm">'+esc(c[2])+'</div></div><button data-n="'+esc(c[0])+'">Sil</button></div>'}).join('');
   }).catch(function(){books.innerHTML='<div class="empty">Liste alınamadı.</div>'});
 }
 books.onclick=function(e){
@@ -231,7 +272,7 @@ function upload(files,i){
 document.getElementById('bf').onchange=function(e){upload(e.target.files,0);e.target.value=''};
 loadBooks();
 var sst=document.getElementById('sst'),si=document.getElementById('syncinfo');
-function sshow(m){sst.textContent=m;sst.hidden=false}
+function sshow(m){mark(sst,m)}
 function loadSettings(){
   fetch('/ayarlar').then(function(r){return r.text()}).then(function(x){
     var c=x.split('\t');
@@ -257,12 +298,12 @@ function rdemo(){var k=300/528,sz=+rf.size.value,sp=+rf.space.value,mg=+rf.margi
   demo.style.width='300px';demo.style.boxSizing='border-box';demo.style.fontSize=(sz*k)+'px';
   demo.style.lineHeight=(sp/100)+'';demo.style.padding='10px '+(mg*k)+'px'}
 ['size','space','margin'].forEach(function(n){rf[n].onchange=rdemo});
-rf.size.value='27';rf.space.value='118';rf.margin.value='30';rdemo();
+rf.size.value='34';rf.space.value='118';rf.margin.value='30';rdemo();
 fetch('/okuma').then(function(r){return r.text()}).then(function(x){var c=x.split('\t');
   rf.size.value=c[0];rf.space.value=c[1];rf.margin.value=c[2];rdemo()}).catch(function(){});
-rf.onsubmit=function(e){e.preventDefault();rst.hidden=false;rst.textContent='Kaydediliyor…';
+rf.onsubmit=function(e){e.preventDefault();mark(rst,'Kaydediliyor…');
   fetch('/okuma',{method:'POST',body:new URLSearchParams(new FormData(rf))}).then(function(r){return r.text()})
-  .then(function(m){rst.textContent=m}).catch(function(){rst.textContent='Kaydedilemedi'})};
+  .then(function(m){mark(rst,m)}).catch(function(){mark(rst,'Kaydedilemedi')})};
 document.getElementById('f').onchange=function(e){
   var file=e.target.files[0];if(!file)return;
   var rd=new FileReader();rd.onload=function(){t.value=rd.result;show('Dosya yüklendi, Kaydet’e bas')};rd.readAsText(file,'utf-8');

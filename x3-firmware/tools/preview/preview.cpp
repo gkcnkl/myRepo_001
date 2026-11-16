@@ -1,3 +1,4 @@
+#include <stdlib.h>
 // Host preview: renders the device screens to PGM images using the exact
 // same ui.cpp drawing code as the firmware (portrait 528x792).
 #include <Adafruit_GFX.h>
@@ -31,6 +32,7 @@ class Canvas : public Adafruit_GFX {
 int main(int argc, char** argv) {
   const char* out = argc > 1 ? argv[1] : ".";
   App app;
+  app.syncConfigured = getenv("X3_SYNC") != nullptr;  // X3_SYNC=1: the hint as on a set-up device
   if (argc > 2) {
     FILE* f = fopen(argv[2], "rb");
     static char buf[8192];
@@ -59,7 +61,7 @@ int main(int argc, char** argv) {
     for (; n < 64; ++n) {
       states[n] = walk;
       if (walk.selected >= walk.tasks.count - 1) { ++n; break; }
-      walk.onButton(Button::Down, 0);
+      walk.onButton(Button::Right, 0);
     }
     int page = 1, at = 0;
     while (true) {
@@ -80,13 +82,13 @@ int main(int argc, char** argv) {
   {  // the end of the list, selection on its last row (e.g. a measures block)
     App end = app;
     end.selected = 0;
-    while (end.selected < end.tasks.count - 1) end.onButton(Button::Down, 0);
+    while (end.selected < end.tasks.count - 1) end.onButton(Button::Right, 0);
     Canvas c;
     ui::drawList(c, end, false);
     c.save(out, "1b-list-end");
   }
 
-  app.onButton(Button::Right, 0);  // focus on task 1
+  app.onButton(Button::Back, 0);  // focus on task 1
   { Canvas c; ui::drawFocus(c, app, 7 * 60 * 1000); c.save(out, "2-focus"); }
   app.onButton(Button::Confirm, 7 * 60 * 1000);  // pause
   { Canvas c; ui::drawFocus(c, app, 9 * 60 * 1000); c.save(out, "3-focus-paused"); }
@@ -133,6 +135,34 @@ int main(int argc, char** argv) {
     app.lib.sortByTitle();
     app.libSelected = 6;
     { Canvas c; ui::drawLibrary(c, app); c.save(out, "8-library"); }
+    // X3_BOOKS=<cihaz.txt>: the shelf with the "# kitap | %N | state | last | file" lines of a real device.
+    if (const char* path = getenv("X3_BOOKS")) {
+      App mine = app;
+      mine.lib.count = 0;
+      if (FILE* f = fopen(path, "rb")) {
+        char line[256];
+        while (fgets(line, sizeof line, f) && mine.lib.count < Library::kMax) {
+          if (strncmp(line, "# kitap | %", 11) != 0) continue;
+          int pct = atoi(line + 11);
+          const char* file = strrchr(line, '|');
+          if (!file) continue;
+          char name[128];
+          snprintf(name, sizeof name, "%s", file + 2);
+          name[strcspn(name, "\r\n")] = '\0';
+          BookInfo& b = mine.lib.books[mine.lib.count];
+          if (!bookFromFileName(name, 300 * 1024, b)) continue;
+          b.percent = static_cast<uint8_t>(pct);
+          if (pct) b.lastRead = 202611100000ull + pct;
+          ++mine.lib.count;
+        }
+        fclose(f);
+      }
+      mine.lib.sortByTitle();
+      mine.libSelected = 0;
+      Canvas c;
+      ui::drawLibrary(c, mine);
+      c.save(out, "8b-library-mine");
+    }
     { Canvas c; ui::drawLendingCard(c, app); c.save(out, "9-lending-card"); }
     App none;
     strcpy(none.dateText, app.dateText);
