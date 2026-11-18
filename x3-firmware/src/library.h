@@ -47,8 +47,9 @@ struct Library {
   BookInfo books[kMax];
   int count = 0;
 
-  // Sorts by title (Turkish-aware enough: byte order after case folding).
-  void sortByTitle();
+  // Shelf order: books in progress, then unopened, then finished; by title
+  // inside each group (Turkish-aware enough: byte order after case folding).
+  void sortForShelf();
   // Books started but not finished, most recently read first; returns count.
   int inProgress(const BookInfo** out, int max) const;
 };

@@ -34,8 +34,8 @@ Tuşların cihazdaki yerleri: [docs-hardware.md](docs-hardware.md).
 
 ## GitHub ile eşitleme (Sabah Brifingi)
 
-Cihaz uyanınca (son eşitlemeden en az 30 dakika geçtiyse) ya da listede SOL'a
-basınca (cihazın kendi Wi-Fi ağı açılmadan) kayıtlı Wi-Fi'a bağlanır ve özel bir GitHub deposuyla
+Cihaz yalnız eşitleme tuşuna basınca (listede sağ yan tuş ya da Wi-Fi sayfasında TAMAM;
+uyanınca kendiliğinden eşitlemez) kayıtlı Wi-Fi'a bağlanır ve özel bir GitHub deposuyla
 eşitlenir (iki ağ kaydedilebilir: ev ve telefon; cihaz çevrede hangisi
 varsa, ikisi de varsa sinyali güçlü olana bağlanır):
 
@@ -151,17 +151,17 @@ biçim anlaşılmamıştır (`2026-11-10 15:30` biçimi de kabul edilir).
 
 **Güncelleme** (cihazda zaten bu yazılım varsa): yalnız uygulamayı yazar;
 eşitleme ayarları, Wi-Fi şifreleri ve okuma ayarları (NVS, 0x9000) korunur.
-`release/x3-bugun-v0.22.0-guncelleme.bin` dosyasını esptool klasörüne kopyala:
+`release/x3-bugun-v0.23.0-guncelleme.bin` dosyasını esptool klasörüne kopyala:
 
 ```
-.\esptool --port COM14 --baud 921600 write-flash 0x10000 x3-bugun-v0.22.0-guncelleme.bin
+.\esptool --port COM14 --baud 921600 write-flash 0x10000 x3-bugun-v0.23.0-guncelleme.bin
 ```
 
 **İlk kurulum** (orijinal yazılımdan geçerken): tek parça imaj 0x0'dan yazılır
 ve NVS'yi de siler, ayarlar yeniden girilir.
 
 ```
-.\esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.22.0-ilk-kurulum.bin
+.\esptool --port COM14 --baud 921600 write-flash 0 x3-bugun-v0.23.0-ilk-kurulum.bin
 ```
 
 ## Fabrika firmware'ine dönüş

@@ -330,7 +330,7 @@ static void testLibraryModel() {
   Library lib;
   const char* names[] = {"c.epub", "a.epub", "b.epub", "d.txt"};
   for (const char* n : names) bookFromFileName(n, 50000, lib.books[lib.count++]);
-  lib.sortByTitle();
+  lib.sortForShelf();
   CHECK(strcmp(lib.books[0].title, "a") == 0 && strcmp(lib.books[3].title, "d") == 0);
   lib.books[1].lastRead = 5;  // b
   lib.books[2].lastRead = 9;  // c
@@ -340,6 +340,9 @@ static void testLibraryModel() {
   CHECK(lib.inProgress(reading, 4) == 2);
   CHECK(strcmp(reading[0]->title, "c") == 0 && strcmp(reading[1]->title, "b") == 0);
   CHECK(lib.inProgress(reading, 1) == 1 && strcmp(reading[0]->title, "c") == 0);
+  lib.sortForShelf();  // in progress (b, c), then unopened (a), then finished (d)
+  CHECK(strcmp(lib.books[0].title, "b") == 0 && strcmp(lib.books[1].title, "c") == 0);
+  CHECK(strcmp(lib.books[2].title, "a") == 0 && strcmp(lib.books[3].title, "d") == 0);
 }
 
 static void testShelfLayout() {

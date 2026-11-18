@@ -132,7 +132,7 @@ int main(int argc, char** argv) {
       }
     }
     app.lib.count = n;
-    app.lib.sortByTitle();
+    app.lib.sortForShelf();
     app.libSelected = 6;
     { Canvas c; ui::drawLibrary(c, app); c.save(out, "8-library"); }
     // X3_BOOKS=<cihaz.txt>: the shelf with the "# kitap | %N | state | last | file" lines of a real device.
@@ -154,11 +154,12 @@ int main(int argc, char** argv) {
           b.percent = static_cast<uint8_t>(pct);
           b.fromRepo = name[0] >= '0' && name[0] <= '9';  // dated names come from the repo (newsletters)
           if (pct) b.lastRead = 202611100000ull + pct;
+          b.finished = strstr(line, "| bitti |") != nullptr;
           ++mine.lib.count;
         }
         fclose(f);
       }
-      mine.lib.sortByTitle();
+      mine.lib.sortForShelf();
       mine.libSelected = 0;
       Canvas c;
       ui::drawLibrary(c, mine);

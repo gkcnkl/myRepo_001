@@ -74,7 +74,7 @@ summary:focus-visible{outline:2px solid var(--lila);outline-offset:2px}
 <h1>Aktarım</h1>
 <div class="rule"></div>
 <div class="dateline"><span class="d" id="clock">Saat ayarlanıyor…</span><span id="dl_books"></span><span id="dl_tasks"></span></div>
-<p class="fixed">Cihaz yarım saatte bir kayıtlı Wi-Fi'a bağlanıp depoyla eşitlenir. Bu sayfa yalnız ayar, kitap ve elle düzeltme içindir.</p>
+<p class="fixed">Cihaz yalnız eşitleme tuşuna (listede sağ yan tuş) basınca kayıtlı Wi-Fi'a bağlanıp depoyla eşitlenir. Bu sayfa yalnız ayar, kitap ve elle düzeltme içindir.</p>
 
 <div class="sec">
 <h2>Eşitleme</h2><div class="hr"></div>
@@ -89,7 +89,7 @@ summary:focus-visible{outline:2px solid var(--lila);outline-offset:2px}
 <label class="fld"><span>DAL</span><input name="branch" id="s_branch" placeholder="main" autocomplete="off"></label>
 <div class="acts"><button type="submit">Kaydet</button><span class="state" id="sst" hidden></span></div>
 </form>
-<div class="kaynak">Cihaz uyanınca (en çok yarım saatte bir) çevrede hangi kayıtlı ağ varsa (ev ya da telefon) ona bağlanır, depodaki <code>brifing.txt</code>'yi alır, tamamladığın görevleri <code>cihaz.txt</code> olarak geri yazar ve saati internetten ayarlar. Anahtar yalnız bu depoya, yalnız "Contents" izniyle olmalı; cihaz onu hiçbir zaman geri göstermez.</div>
+<div class="kaynak">Eşitleme tuşuna basınca cihaz çevrede hangi kayıtlı ağ varsa (ev ya da telefon) ona bağlanır, depodaki <code>brifing.txt</code>'yi alır, tamamladığın görevleri <code>cihaz.txt</code> olarak geri yazar ve saati internetten ayarlar. Anahtar yalnız bu depoya, yalnız "Contents" izniyle olmalı; cihaz onu hiçbir zaman geri göstermez.</div>
 </div>
 
 <div class="sec">

@@ -42,6 +42,15 @@ int compareTitles(const void* a, const void* b) {
   return fold(*x) - fold(*y);
 }
 
+// Shelf order: 0 = started and not finished, 1 = never opened, 2 = finished.
+int shelfGroup(const BookInfo& b) { return b.finished ? 2 : b.lastRead != 0 ? 0 : 1; }
+
+int compareShelf(const void* a, const void* b) {
+  const int ga = shelfGroup(*static_cast<const BookInfo*>(a)), gb = shelfGroup(*static_cast<const BookInfo*>(b));
+  if (ga != gb) return ga - gb;
+  return compareTitles(a, b);
+}
+
 }  // namespace
 
 void cleanTitle(char* title) {
@@ -138,7 +147,7 @@ size_t serializeBookState(const BookInfo& b, char* buf, size_t bufSize) {
   return static_cast<size_t>(n) < bufSize ? static_cast<size_t>(n) : bufSize - 1;
 }
 
-void Library::sortByTitle() { qsort(books, count, sizeof books[0], compareTitles); }
+void Library::sortForShelf() { qsort(books, count, sizeof books[0], compareShelf); }
 
 int Library::inProgress(const BookInfo** out, int max) const {
   const BookInfo* all[kMax];

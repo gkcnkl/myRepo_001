@@ -113,7 +113,6 @@ int openBookIndex = -1;
 int readerPageTurns = 0;
 bool libraryDirty = false;  // books were added/removed over Wi-Fi
 SyncSettings syncSettings;
-constexpr uint32_t kAutoSyncEveryMin = 30;
 
 // Adafruit_GFX canvas that draws straight into the SDK framebuffer
 // (792x528 native, row-major, MSB-first, 1 = white).
@@ -301,7 +300,7 @@ void scanLibrary() {
     ++lib.count;
   }
   dir.close();
-  lib.sortByTitle();
+  lib.sortForShelf();
   if (app.libSelected > lib.count) app.libSelected = lib.count;
   Serial.printf("[x3] library: %d books\n", lib.count);
 }
@@ -421,12 +420,21 @@ void recordProgress() {
 }
 
 void closeBook() {
-  if (openBookIndex >= 0) recordProgress();
+  const bool wasOpen = openBookIndex >= 0;
+  if (wasOpen) recordProgress();
   bookReader.close();
   bookSource.close();
   bookCache.closeAll();
   freeReaderMemory();
   openBookIndex = -1;
+  if (wasOpen && app.libSelected < app.lib.count) {
+    // The book may have moved group (started, finished): re-order the shelf, keep it selected.
+    char id[sizeof(BookInfo::id)];
+    snprintf(id, sizeof id, "%s", app.lib.books[app.libSelected].id);
+    app.lib.sortForShelf();
+    for (int i = 0; i < app.lib.count; ++i)
+      if (strcmp(app.lib.books[i].id, id) == 0) app.libSelected = i;
+  }
 }
 
 void readerTrace(const char* step, int value) {
@@ -813,15 +821,6 @@ void stopWifi() {
   restartInto(screenAfter, true, out.message);
 }
 
-bool autoSyncDue() {
-  if (!syncSettings.configured()) return false;
-  const uint32_t last = lastSyncMinutes();
-  LocalTime t;
-  if (last == 0 || !currentTime(t)) return true;
-  const uint32_t nowMin = minutesSince2000(t);
-  return nowMin < last || nowMin - last >= kAutoSyncEveryMin;
-}
-
 // --- Sync settings on the transfer page ----------------------------------------
 
 void handleGetSettings() {
@@ -950,8 +949,7 @@ void setup() {
   app.lastInputMs = millis();
   // After a restart the panel already shows a clean screen: skip the white pass.
   render(true, /*deepClean=*/!resumed);
-  // Pull the latest briefing on wake when it is due (not right after a sync).
-  if (!(resumed && resumeState.skipSync) && autoSyncDue()) syncAndRestart(app.screen);
+  // No sync on wake: it runs only when the sync key is pressed.
 }
 
 void loop() {
@@ -969,12 +967,10 @@ void loop() {
       if (fx.sleep) goToSleep();
       if (fx.stopWifi) {
         stopWifi();
-        if (fx.syncNow) syncAndRestart(app.screen);
-        // With new settings saved, sync on the way out (the restart is needed anyway).
-        if (syncSettings.configured() && autoSyncDue()) syncAndRestart(app.screen);
+        if (fx.syncNow) syncAndRestart(app.screen);  // TAMAM on the Wi-Fi page
         restartInto(app.screen, false, nullptr);
       }
-      if (fx.syncNow && !fx.stopWifi) syncAndRestart(app.screen);  // SOL on the list
+      if (fx.syncNow && !fx.stopWifi) syncAndRestart(app.screen);  // the right side key on the list
       if (fx.startWifi) startWifi();
       if (fx.save) saveTasks();
       if (libraryDirty && app.screen == Screen::Library) scanLibrary();
