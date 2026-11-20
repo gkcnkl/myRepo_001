@@ -584,11 +584,12 @@ void renderReaderPage() {
 char gGrayNote[40] = "";  // why gray images are off on this panel (test build)
 
 bool showGrayPage(const gray::Map* maps, int count) {
-  // The base must agree with the levels (see gray::applyBase). It is shown
-  // with a full-strength HALF refresh first: the X3's gray base waveform is
-  // differential and too gentle to clear the previous page (its text stayed
-  // as a ghost inside the images).
-  gray::applyBase(epd.getFrameBuffer(), maps, count);
+  // The base is the page as drawn, images in their own fine B/W dither: on
+  // the X3 the absolute gray drive leaves black and white pixels as the base
+  // shows them and only nudges the gray states, so the dither carries the
+  // tone (a base thresholded to the levels came out as two flat halves on the
+  // device). It is shown with a full-strength HALF refresh first: the gray
+  // base waveform is differential and left the previous page as a ghost.
   epd.displayBuffer(EInkDisplay::HALF_REFRESH);
   if (!epd.displayGrayscaleBase(freeink::GrayscaleMode::Absolute, EInkDisplay::HALF_REFRESH)) return false;
   int x0 = gray::kPanelCols, y0 = gray::kPanelRows, x1 = 0, y1 = 0;  // panel coordinates

@@ -79,17 +79,6 @@ void storeRow(Map& m, uint16_t y, const uint8_t* g, uint16_t width) {
   }
 }
 
-void applyBase(uint8_t* fb, const Map* maps, int count) {
-  for (int k = 0; k < count; ++k) {
-    const Map& m = maps[k];
-    if (m.data == nullptr) continue;
-    for (int x = m.x < 0 ? 0 : m.x; x < m.x + m.w && x < kPanelRows; ++x) {
-      uint8_t* row = fb + static_cast<size_t>(kPanelRows - 1 - x) * kRowBytes;
-      for (int y = m.y < 0 ? 0 : m.y; y < m.y + m.h && y < kPanelCols; ++y) putBit(row, y, levelAt(m, x, y) >= 2);
-    }
-  }
-}
-
 void buildStrip(const uint8_t* fb, const Map* maps, int count, int row0, int n, uint8_t* lsb, uint8_t* msb) {
   for (int r = 0; r < n; ++r) {
     const int row = row0 + r;
