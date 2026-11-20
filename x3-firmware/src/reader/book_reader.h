@@ -136,6 +136,10 @@ class BookReader {
   bool render(uint8_t* framebuffer);
   // The gray maps the last render() kept (0 when none, or gray is off). They
   // live in the reader's parse arena: valid until the next page operation.
+  // The scratch arena, idle between render() and the next page operation
+  // (the gray maps live in the parse arena): room to park the 52 KB frame
+  // while the panel is wiped. Null when smaller than `bytes` or not open.
+  uint8_t* idleScratch(size_t bytes);
   // Images on the page the last render() drew (0 for text-only pages).
   int imageCount() const { return imageCount_; }
   int grayMaps(const gray::Map** out) const {

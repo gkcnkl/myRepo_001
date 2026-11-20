@@ -476,6 +476,13 @@ void BookReader::keepGrayMaps(const freeink::book::Page& page) {
   }
 }
 
+uint8_t* BookReader::idleScratch(size_t bytes) {
+  if (!open_) return nullptr;
+  Impl& m = *impl_;
+  m.scratch.reset();
+  return static_cast<uint8_t*>(m.scratch.alloc(bytes, 4));
+}
+
 bool BookReader::render(uint8_t* fb) {
   Impl& m = *impl_;
   grayCount_ = 0;

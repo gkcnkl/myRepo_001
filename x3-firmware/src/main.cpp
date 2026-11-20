@@ -630,10 +630,18 @@ void render(bool screenChange, bool deepClean = false) {
         if (n > 0 && !cleanStart) {
           // A gray page goes onto a white panel: the gray drive brought the
           // previous page's text back as a ghost inside the images. The white
-          // pass clears the frame too, so the page is drawn again.
-          cleanPanel();
-          renderReaderPage();
-          n = bookReader.grayMaps(&maps);
+          // pass clears the frame too, so the frame waits in the reader's idle
+          // scratch arena meanwhile (or, without room, the page is drawn again).
+          const size_t frameBytes = epd.getBufferSize();
+          if (uint8_t* park = bookReader.idleScratch(frameBytes)) {
+            memcpy(park, epd.getFrameBuffer(), frameBytes);
+            cleanPanel();
+            memcpy(epd.getFrameBuffer(), park, frameBytes);
+          } else {
+            cleanPanel();
+            renderReaderPage();
+            n = bookReader.grayMaps(&maps);
+          }
         }
         if (n > 0 && showGrayPage(maps, n)) {
           readerPageTurns = 0;
