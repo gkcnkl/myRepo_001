@@ -583,6 +583,10 @@ void renderReaderPage() {
 // driver makes the next B/W refresh a clean one. False when the panel says no.
 char gGrayNote[40] = "";  // why gray images are off on this panel (test build)
 
+// A gray page leaves residue that B/W refreshes do not clear (its title came
+// back as a ghost two pages later): the next render starts with a white pass.
+bool grayOnPanel = false;
+
 bool showGrayPage(const gray::Map* maps, int count) {
   // The base is the page as drawn, images in their own fine B/W dither: on
   // the X3 the absolute gray drive leaves black and white pixels as the base
@@ -592,18 +596,8 @@ bool showGrayPage(const gray::Map* maps, int count) {
   // base waveform is differential and left the previous page as a ghost.
   epd.displayBuffer(EInkDisplay::HALF_REFRESH);
   if (!epd.displayGrayscaleBase(freeink::GrayscaleMode::Absolute, EInkDisplay::HALF_REFRESH)) return false;
-  int x0 = gray::kPanelCols, y0 = gray::kPanelRows, x1 = 0, y1 = 0;  // panel coordinates
-  for (int i = 0; i < count; ++i) {
-    const gray::Map& m = maps[i];
-    const int px0 = m.y, px1 = m.y + m.h, py0 = gray::kPanelRows - (m.x + m.w), py1 = gray::kPanelRows - m.x;
-    if (px0 < x0) x0 = px0;
-    if (px1 > x1) x1 = px1;
-    if (py0 < y0) y0 = py0;
-    if (py1 > y1) y1 = py1;
-  }
-  if (x0 < 0) x0 = 0;
-  if (y0 < 0) y0 = 0;
-  if (x1 > x0 && y1 > y0) epd.preconditionGrayscale(x0, y0, x1 - x0, y1 - y0);
+  // No settle (preconditionGrayscale) pass: on the device it washed the
+  // images out.
   static uint8_t lsb[8 * gray::kRowBytes], msb[8 * gray::kRowBytes];
   const uint8_t* fb = epd.getFrameBuffer();
   for (int row = 0; row < gray::kPanelRows; row += 8) {
@@ -614,12 +608,14 @@ bool showGrayPage(const gray::Map* maps, int count) {
   }
   epd.displayGrayBuffer();
   epd.cleanupGrayscaleBuffers(epd.getFrameBuffer());
+  grayOnPanel = true;
   return true;
 }
 
 // screenChange -> HALF refresh; deepClean -> white pass first (no ghosts).
 void render(bool screenChange, bool deepClean = false) {
-  if (deepClean) cleanPanel();
+  if (deepClean || grayOnPanel) cleanPanel();
+  grayOnPanel = false;
   updateStatus();
   switch (app.screen) {
     case Screen::List: ui::drawList(screen, app, false); break;
