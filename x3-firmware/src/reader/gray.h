@@ -51,6 +51,13 @@ uint8_t levelAt(const Map& m, int x, int y);
 // map, keeping every (1 << shift)th row and pixel.
 void storeRow(Map& m, uint16_t y, const uint8_t* g, uint16_t width);
 
+// Makes the B/W frame inside the maps agree with them, as the base of a gray
+// pass: black and dark become black, light and white become white. The X3's
+// absolute gray drive only moves the two gray states and leaves black and
+// white as the base left them, so a base dithered on its own would leave
+// stray dots where it disagrees with the levels.
+void applyBase(uint8_t* fb, const Map* maps, int count);
+
 // Fills panel rows [row0, row0 + n) of both planes (n * kRowBytes bytes each)
 // from the B/W frame `fb` (1 = white) and the maps on top of it.
 void buildStrip(const uint8_t* fb, const Map* maps, int count, int row0, int n, uint8_t* lsb, uint8_t* msb);

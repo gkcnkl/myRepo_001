@@ -807,6 +807,10 @@ static void testGray() {
   // columns 8..11 are the high nibble of byte 1: LSB 0,1,0,1 / MSB 0,0,1,1
   CHECK((lsb[1] & 0xF0) == 0x50 && (msb[1] & 0xF0) == 0x30);
   CHECK((lsb[1] & 0x0F) == 0x0F && msb[gray::kRowBytes + 1] == 0xFF);  // the rest untouched
+
+  // applyBase: black/dark -> black, light/white -> white, nothing outside.
+  gray::applyBase(fb, &img, 1);
+  CHECK((fb[1] & 0xF0) == 0x30 && (fb[1] & 0x0F) == 0x0F && fb[0] == 0x7F);
 }
 
 int main() {

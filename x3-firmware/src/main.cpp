@@ -565,14 +565,13 @@ void renderReaderPage() {
 char gGrayNote[40] = "";  // why gray images are off on this panel (test build)
 
 bool showGrayPage(const gray::Map* maps, int count) {
+  // The base must agree with the levels (see gray::applyBase). It is shown
+  // with a full-strength HALF refresh first: the X3's gray base waveform is
+  // differential and too gentle to clear the previous page (its text stayed
+  // as a ghost inside the images).
+  gray::applyBase(epd.getFrameBuffer(), maps, count);
+  epd.displayBuffer(EInkDisplay::HALF_REFRESH);
   if (!epd.displayGrayscaleBase(freeink::GrayscaleMode::Absolute, EInkDisplay::HALF_REFRESH)) return false;
-  // Test build: this note reaches the panel only through the gray planes, so
-  // seeing it means the gray refresh itself ran.
-  {
-    char note[32];
-    snprintf(note, sizeof note, "gri · %d resim", count);
-    ui::drawReaderNote(screen, note);
-  }
   int x0 = gray::kPanelCols, y0 = gray::kPanelRows, x1 = 0, y1 = 0;  // panel coordinates
   for (int i = 0; i < count; ++i) {
     const gray::Map& m = maps[i];
