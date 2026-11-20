@@ -230,64 +230,61 @@ int16_t batteryCell(Adafruit_GFX& g, const App& app, int16_t right) {
   return batteryIcon(g, right, 44, 32, &InterMed18, app.batteryPercent, app.charging, app.batteryLow(), 1);
 }
 
-// Small weather glyphs (about 22x16) centered on (cx, cy), drawn with lines.
-void cloudShape(Adafruit_GFX& g, int16_t cx, int16_t cy, bool filled) {
-  // two bumps on a flat base
-  if (filled) {
-    g.fillCircle(cx - 4, cy, 5, 1);
-    g.fillCircle(cx + 3, cy - 2, 6, 1);
-    g.fillRect(cx - 9, cy, 18, 5, 1);
-  } else {
-    g.drawCircle(cx - 4, cy, 5, 1);
-    g.drawCircle(cx + 3, cy - 2, 6, 1);
-    g.fillRect(cx - 4, cy - 3, 8, 7, 0);   // clear the overlap inside
-    g.fillCircle(cx - 4, cy, 4, 0);
-    g.fillCircle(cx + 3, cy - 2, 5, 0);
-    g.drawFastHLine(cx - 9, cy + 5, 19, 1);
-    g.drawFastVLine(cx - 9, cy, 5, 1);
-    g.drawFastVLine(cx + 9, cy - 1, 6, 1);
-  }
+// Large weather glyphs (about 36x30) centered on (cx, cy), 2px strokes like
+// the battery glyph beside them. Outlines are a filled shape with a smaller
+// copy cut back out, so the strokes stay even.
+void bigCloud(Adafruit_GFX& g, int16_t cx, int16_t cy, uint16_t c) {
+  const uint16_t bg = c ? 0 : 1;
+  g.fillCircle(cx - 8, cy, 9, c);
+  g.fillCircle(cx + 6, cy - 4, 11, c);
+  g.fillRoundRect(cx - 17, cy, 34, 11, 5, c);
+  g.fillCircle(cx - 8, cy, 7, bg);
+  g.fillCircle(cx + 6, cy - 4, 9, bg);
+  g.fillRoundRect(cx - 15, cy, 30, 9, 4, bg);
 }
 
-void sunShape(Adafruit_GFX& g, int16_t cx, int16_t cy, int16_t r) {
-  g.drawCircle(cx, cy, r, 1);
+void bigSun(Adafruit_GFX& g, int16_t cx, int16_t cy, int16_t r, int16_t ray) {
+  g.fillCircle(cx, cy, r, 1);
+  g.fillCircle(cx, cy, r - 2, 0);
   const int8_t dx[8] = {0, 1, 1, 1, 0, -1, -1, -1}, dy[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
   for (int i = 0; i < 8; ++i) {
-    const int16_t a = (dx[i] && dy[i]) ? r + 1 : r + 2, b = (dx[i] && dy[i]) ? r + 3 : r + 5;
-    g.drawLine(cx + dx[i] * a, cy + dy[i] * a, cx + dx[i] * b, cy + dy[i] * b, 1);
+    const bool diag = dx[i] && dy[i];
+    const int16_t a = diag ? r + 1 : r + 3, b = diag ? r + ray - 2 : r + ray;
+    for (int t = 0; t < 2; ++t) {  // two pixels thick
+      const int16_t ox = dy[i] ? t : 0, oy = dy[i] ? 0 : t;
+      g.drawLine(cx + dx[i] * a + ox, cy + dy[i] * a + oy, cx + dx[i] * b + ox, cy + dy[i] * b + oy, 1);
+    }
   }
 }
 
-void weatherIcon(Adafruit_GFX& g, const char* kind, int16_t cx, int16_t cy) {
+void bigWeatherIcon(Adafruit_GFX& g, const char* kind, int16_t cx, int16_t cy) {
   if (strcmp(kind, "gunes") == 0) {
-    sunShape(g, cx, cy, 5);
+    bigSun(g, cx, cy, 8, 7);
   } else if (strcmp(kind, "parcali") == 0) {
-    sunShape(g, cx - 4, cy - 4, 4);
-    g.fillCircle(cx + 1, cy + 3, 5, 0);
-    g.fillCircle(cx + 7, cy + 1, 6, 0);
-    g.fillRect(cx - 4, cy + 3, 18, 6, 0);
-    cloudShape(g, cx + 3, cy + 3, false);
-  } else if (strcmp(kind, "bulut") == 0) {
-    cloudShape(g, cx, cy + 1, false);
+    bigSun(g, cx - 8, cy - 7, 6, 5);
+    // Clear a cloud-shaped hole (a size bigger) so the sun hides behind it.
+    g.fillCircle(cx - 4, cy + 4, 11, 0);
+    g.fillCircle(cx + 10, cy, 13, 0);
+    g.fillRoundRect(cx - 15, cy + 4, 38, 15, 6, 0);
+    bigCloud(g, cx + 4, cy + 4, 1);
   } else if (strcmp(kind, "sis") == 0) {
-    for (int i = -1; i <= 1; ++i) g.drawFastHLine(cx - 9 + (i & 1) * 3, cy + i * 5, 16, 1);
-  } else if (strcmp(kind, "yagmur") == 0) {
-    cloudShape(g, cx, cy - 3, false);
-    for (int i = -1; i <= 1; ++i) g.drawLine(cx + i * 5 + 1, cy + 5, cx + i * 5 - 1, cy + 9, 1);
-  } else if (strcmp(kind, "kar") == 0) {
-    cloudShape(g, cx, cy - 3, false);
-    for (int i = -1; i <= 1; ++i) {
-      g.drawPixel(cx + i * 5, cy + 6, 1);
-      g.drawFastHLine(cx + i * 5 - 1, cy + 7, 3, 1);
-      g.drawPixel(cx + i * 5, cy + 8, 1);
+    for (int i = -1; i <= 1; ++i) g.fillRoundRect(cx - 16 + (i & 1) * 5, cy + i * 8 - 1, 28, 2, 1, 1);
+  } else if (strcmp(kind, "yagmur") == 0 || strcmp(kind, "kar") == 0 || strcmp(kind, "firtina") == 0) {
+    bigCloud(g, cx, cy - 4, 1);
+    if (kind[0] == 'y') {
+      for (int i = -1; i <= 1; ++i)
+        for (int t = 0; t < 2; ++t) g.drawLine(cx + i * 9 + 2 + t, cy + 10, cx + i * 9 - 1 + t, cy + 16, 1);
+    } else if (kind[0] == 'k') {
+      for (int i = -1; i <= 1; ++i) {
+        g.fillRect(cx + i * 9 - 3, cy + 12, 6, 2, 1);
+        g.fillRect(cx + i * 9 - 1, cy + 10, 2, 6, 1);
+      }
+    } else {
+      g.fillTriangle(cx + 3, cy + 8, cx - 4, cy + 15, cx + 1, cy + 15, 1);
+      g.fillTriangle(cx - 1, cy + 13, cx + 4, cy + 13, cx - 3, cy + 20, 1);
     }
-  } else if (strcmp(kind, "firtina") == 0) {
-    cloudShape(g, cx, cy - 3, false);
-    g.drawLine(cx + 1, cy + 3, cx - 2, cy + 7, 1);
-    g.drawLine(cx - 2, cy + 7, cx + 2, cy + 7, 1);
-    g.drawLine(cx + 2, cy + 7, cx - 1, cy + 11, 1);
-  } else {
-    cloudShape(g, cx, cy + 1, false);
+  } else {  // bulut, and anything unknown
+    bigCloud(g, cx, cy + 1, 1);
   }
 }
 
@@ -326,10 +323,12 @@ void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* 
     char temps[24];
     snprintf(temps, sizeof temps, "%d° / %d°", app.tasks.weather.min, app.tasks.weather.max);
     Encoded e(temps);
-    const int16_t w = static_cast<int16_t>(widthOf(g, &Inter14, e.s));
-    drawEnc(g, &Inter14, e.s, kW - kM - w, 124, 1);
-    weatherIcon(g, app.tasks.weather.kind, kW - kM - w - 16, 119);
-    rightEnd = kW - kM - w - 32;
+    // As large as the battery glyph above it: its font, an icon of its height.
+    const int16_t w = static_cast<int16_t>(widthOf(g, &InterMed18, e.s));
+    drawEnc(g, &InterMed18, e.s, kW - kM - w, 130, 1);
+    const int16_t cx = kW - kM - w - 30, cy = 124;
+    bigWeatherIcon(g, app.tasks.weather.kind, cx, cy);
+    rightEnd = cx - 26;
   }
   if (showSubtitle && app.tasks.subtitle[0]) {
     const int16_t x = kM + trackedWidth(&InterSemi12, date, 1) + 14;
@@ -338,11 +337,13 @@ void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* 
 }
 
 // Bottom status bar: a hairline, two uppercase labels and an optional hint line.
+// With nothing on either side, the hint moves up to the middle of the bar.
 void statusBar(Adafruit_GFX& g, const char* left, const char* right, const char* hint) {
   g.drawFastHLine(0, kBarTop, kW, 1);
+  const bool bare = !left[0] && !right[0];
   label(g, left, kM, kBarTop + 28);
   label(g, right, kW - kM, kBarTop + 28, 2);
-  if (hint) textCentered(g, &Inter14, hint, kBarTop + 54);
+  if (hint) textCentered(g, &Inter14, hint, bare ? kBarTop + 40 : kBarTop + 54);
 }
 
 void indicatorGrid(Adafruit_GFX& g, const TaskList& t) {
@@ -523,8 +524,9 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
                                                         : "sol yan raf  ·  sağ yan Wi-Fi")
                                   : app.syncConfigured ? "TAMAM durum  ·  GERİ odak  ·  yan: raf / eşitle"
                                                     : "TAMAM durum  ·  GERİ odak  ·  yan: raf / Wi-Fi";
-  const char* right = !app.sdAvailable ? "SD kart yok" : app.syncNote[0] ? app.syncNote : weekdayOf(app, wd, sizeof wd);
-  statusBar(g, done, right, hint);
+  // The day and the "x / n" count are already in the masthead: only news here.
+  const char* right = !app.sdAvailable ? "SD kart yok" : app.syncNote[0] ? app.syncNote : "";
+  statusBar(g, "", right, hint);
 }
 
 void drawFocus(Adafruit_GFX& g, const App& app, uint32_t nowMs) {
