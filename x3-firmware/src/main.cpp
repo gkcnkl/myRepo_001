@@ -204,8 +204,9 @@ void applySetTimeFile() {
 }
 
 // Refreshes the date and battery fields shown in the header.
-void updateStatus() {
+void updateStatus(bool freshBattery = false) {
   app.dateText[0] = '\0';
+  app.timeText[0] = '\0';
   freeink::Rtc::DateTime dt;
   if (rtc.present() && rtc.now(dt)) {
     LocalTime t;
@@ -216,12 +217,13 @@ void updateStatus() {
     t.minute = dt.minute;
     t.second = dt.second;
     formatTurkishDate(t, app.dateText, sizeof app.dateText);
+    if (app.dateText[0]) snprintf(app.timeText, sizeof app.timeText, "%02d:%02d", t.hour, t.minute);
   }
 
   static uint32_t lastBatteryMs = 0;
   static bool batteryRead = false;
   const uint32_t now = millis();
-  if (!batteryRead || now - lastBatteryMs >= kBatteryPollMs) {
+  if (freshBattery || !batteryRead || now - lastBatteryMs >= kBatteryPollMs) {
     static const BatteryMonitor battery;
     uint16_t percent = 0;
     if (battery.readPercentageChecked(percent)) app.batteryPercent = percent;
@@ -864,7 +866,7 @@ void handlePostSettings() {
   if (app.screen == Screen::Wifi || app.screen == Screen::Reader) app.screen = Screen::Library;
   // This image stays on the panel while off, so clean first: no ghosts.
   cleanPanel();
-  updateStatus();
+  updateStatus(true);  // the card shows the battery while off: read it now
   ui::drawLendingCard(screen, app);
   epd.displayBuffer(EInkDisplay::HALF_REFRESH);
   epd.deepSleep();

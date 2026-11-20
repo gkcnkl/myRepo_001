@@ -63,9 +63,13 @@ struct App {
   bool sdAvailable = true;
 
   // Status line, filled by main.cpp before each render.
+  char timeText[8] = "";    // "14:32"; empty when the clock is not set
   char dateText[48] = "";  // "Salı, 10 Kasım"; empty when the clock is not set
   int batteryPercent = -1;  // -1 = unknown
   bool charging = false;
+  // At or under this (and not charging) the battery shows as low.
+  static constexpr int kLowBatteryPercent = 20;
+  bool batteryLow() const { return batteryPercent >= 0 && batteryPercent <= kLowBatteryPercent && !charging; }
 
   // Wi-Fi transfer screen, filled by main.cpp.
   char wifiSsid[24] = "";

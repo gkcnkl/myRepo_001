@@ -47,6 +47,7 @@ int main(int argc, char** argv) {
   }
   app.selected = 1;
   strcpy(app.dateText, "Salı, 10 Kasım");
+  strcpy(app.timeText, "22:47");
   app.batteryPercent = 84;
 
   { Canvas c; ui::drawList(c, app, false); c.save(out, "1-list"); }
@@ -166,6 +167,13 @@ int main(int argc, char** argv) {
       c.save(out, "8b-library-mine");
     }
     { Canvas c; ui::drawLendingCard(c, app); c.save(out, "9-lending-card"); }
+    {
+      App low = app;  // low battery: inverted tags on the card, the briefing and the shelf
+      low.batteryPercent = 12;
+      { Canvas c; ui::drawLendingCard(c, low); c.save(out, "9b-lending-card-low"); }
+      { Canvas c; ui::drawList(c, low, false); c.save(out, "1b-list-low-battery"); }
+      { Canvas c; ui::drawLibrary(c, low); c.save(out, "8c-library-low-battery"); }
+    }
     App none;
     strcpy(none.dateText, app.dateText);
     { Canvas c; ui::drawLibrary(c, none); c.save(out, "10-library-empty"); }
