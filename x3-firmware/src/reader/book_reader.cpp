@@ -55,6 +55,42 @@ extern "C" void x3_stbtt_free(void* ptr) {
   free(ptr);
 }
 
+// --- PNG decoder memory -------------------------------------------------------
+// pngle callocs ~44 KB per image (tools/patch_sdk.py routes it here). During an
+// image decode the reader points gImg at its arenas: the request is served
+// from the first with room (zeroed), else from the heap. Arena memory is never
+// freed one by one: the decode's mark/release returns it.
+namespace {
+struct ImageArenas {
+  freeink::book::Arena* arena[2] = {nullptr, nullptr};
+  const uint8_t* lo = nullptr;  // the reader's big block: frees inside it are no-ops
+  const uint8_t* hi = nullptr;
+} gImg;
+}  // namespace
+
+extern "C" void* x3_pngle_calloc(size_t n, size_t size) {
+  if (size != 0 && n > SIZE_MAX / size) return nullptr;
+  const size_t bytes = n * size;
+  for (freeink::book::Arena* a : gImg.arena) {
+    if (a == nullptr) continue;
+    if (void* p = a->alloc(bytes, 8)) {
+      memset(p, 0, bytes);
+      return p;
+    }
+  }
+#ifdef X3_PNGLE_ARENA_ONLY  // reader-sim: prove the arenas suffice, as on the device
+  return nullptr;
+#else
+  return calloc(n, size);
+#endif
+}
+
+extern "C" void x3_pngle_free(void* ptr) {
+  const auto* b = static_cast<const uint8_t*>(ptr);
+  if (b != nullptr && b >= gImg.lo && b < gImg.hi) return;
+  free(ptr);
+}
+
 namespace reader {
 
 using namespace freeink::book;
@@ -194,6 +230,8 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
   m.scratch.init(mem.big, kScratchArena);
   m.parse.init(mem.big + kScratchArena, kParseArena);
   m.parseBase = mem.big + kScratchArena;
+  gImg.lo = mem.big;
+  gImg.hi = mem.big + kBigBlock;
   m.bookArena.init(mem.book, mem.bookSize);
   m.glyphArena.init(mem.glyph, mem.glyphSize);
   const bool haveBold = mem.bold != nullptr && mem.boldSize > 0;
@@ -275,8 +313,10 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
                                                    page.runCount == 0);
     bool showCover = false;
     if (coverOnly && gGrayImages && chapterPages_ == 1 && page.imageCount == 1) {
+      // Stored only: a deflated cover needs the ~46 KB inflate state beside
+      // the decoder, more than the scratch arena holds.
       const ZipEntry* e = m.book.zip().find(page.images[0].href);
-      showCover = e != nullptr && e->uncompressedSize <= kMaxImageBytes;
+      showCover = e != nullptr && e->method == 0 && e->uncompressedSize <= kMaxImageBytes;
     }
     m.scratch.reset();
     if (coverOnly && !showCover) {
@@ -399,6 +439,11 @@ bool BookReader::prevPage() {
 // Decodes the page's images a second time into 2-bit gray maps in the parse
 // arena (idle once the text is drawn), each at the finest resolution that
 // still fits; an image that fits at none stays black and white only.
+// Decodes the page's images a second time into gray maps in the parse arena
+// (idle once the text is drawn). Each image starts at the finest resolution
+// whose map fits; when the decode then runs out of memory (a PNG decoder or a
+// deflated entry needs much of the same arenas) it retries at the next coarser
+// one, which leaves the decoder more room. One that never fits stays B/W.
 void BookReader::keepGrayMaps(const freeink::book::Page& page) {
   Impl& m = *impl_;
   m.parse.reset();
@@ -406,19 +451,28 @@ void BookReader::keepGrayMaps(const freeink::book::Page& page) {
   for (uint16_t i = 0; i < page.imageCount && grayCount_ < kMaxGrayImages; ++i) {
     const PageImage& im = page.images[i];
     gray::Map& g = grayMaps_[grayCount_];
-    uint8_t* data = nullptr;
-    size_t bytes = 0;
-    for (uint8_t shift = 0; shift <= 2 && data == nullptr; ++shift) {
-      bytes = gray::plan(g, im.x, im.y, im.width, im.height, shift);
-      data = static_cast<uint8_t*>(m.parse.alloc(bytes, 4));
+    for (uint8_t shift = 0; shift <= 3; ++shift) {
+      const size_t mapMark = m.parse.mark();
+      const size_t bytes = gray::plan(g, im.x, im.y, im.width, im.height, shift);
+      auto* data = static_cast<uint8_t*>(m.parse.alloc(bytes, 4));
+      if (data == nullptr) continue;  // too big at this resolution: coarser
+      memset(data, 0xFF, bytes);  // white until decoded
+      g.data = data;
+      const size_t mark = m.scratch.mark(), decodeMark = m.parse.mark();
+      gImg.arena[0] = &m.scratch;
+      gImg.arena[1] = &m.parse;  // what the map leaves of it
+      const BookStatus st = ImageRenderer::render(*m.source, zip, im, m.scratch, storeGrayRow, &g);
+      gImg.arena[0] = gImg.arena[1] = nullptr;
+      m.scratch.release(mark);
+      m.parse.release(decodeMark);
+      if (st == BookStatus::Ok) {
+        ++grayCount_;
+        break;
+      }
+      m.parse.release(mapMark);  // drop this map; a coarser one may decode
+      g.data = nullptr;
+      if (st != BookStatus::OutOfMemory) break;
     }
-    if (data == nullptr) continue;
-    memset(data, 0xFF, bytes);  // white until decoded
-    g.data = data;
-    const size_t mark = m.scratch.mark();
-    const BookStatus st = ImageRenderer::render(*m.source, zip, im, m.scratch, storeGrayRow, &g);
-    m.scratch.release(mark);
-    if (st == BookStatus::Ok) ++grayCount_;
   }
 }
 
@@ -447,8 +501,13 @@ bool BookReader::render(uint8_t* fb) {
   if (page.imageCount > 0 && !m.isText) {
     if (imagesOk) {
       const size_t mark = m.scratch.mark();
+      m.parse.reset();  // idle until the text is drawn: room for the PNG decoder
+      gImg.arena[0] = &m.scratch;
+      gImg.arena[1] = &m.parse;
       st = PageRenderer::renderImages(page, *m.source, zip, m.scratch, target);
+      gImg.arena[0] = gImg.arena[1] = nullptr;
       m.scratch.release(mark);
+      m.parse.reset();
     } else {
       for (uint16_t i = 0; i < page.imageCount; ++i) {
         const PageImage& im = page.images[i];
