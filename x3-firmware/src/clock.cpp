@@ -60,6 +60,15 @@ void formatTurkishDate(const LocalTime& t, char* out, size_t outSize) {
   snprintf(out, outSize, "%s, %d %s", kDays[weekdayOf(t.year, t.month, t.day)], t.day, kMonths[t.month - 1]);
 }
 
+void formatTurkishDateLong(const LocalTime& t, char* out, size_t outSize) {
+  if (outSize == 0) return;
+  if (!isPlausible(t)) {
+    out[0] = '\0';
+    return;
+  }
+  snprintf(out, outSize, "%d %s %d, %s", t.day, kMonths[t.month - 1], t.year, kDays[weekdayOf(t.year, t.month, t.day)]);
+}
+
 uint32_t minutesSince2000(const LocalTime& t) {
   // Days from civil (Howard Hinnant), shifted to 2000-01-01.
   int y = t.year;

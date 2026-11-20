@@ -179,12 +179,55 @@ int16_t countCell(Adafruit_GFX& g, const char* value, const char* caption, int16
   return x;
 }
 
-// The battery count: "%62 pil", "%37 şarj", or an inverted "%12 düşük".
-int16_t batteryCell(Adafruit_GFX& g, const App& app, int16_t right) {
+// Battery glyph with the charge written inside ("%84"), right edge (terminal
+// included) at `right`, top at `top`, body `h` tall. The body is always the
+// same width (room for "%100" and the plug), so it never changes size. While
+// charging a plug sits over the body's left edge, prongs up and its cable
+// running down to the bottom line; when low the body is filled and the number
+// cut out of it. Returns the left edge.
+int16_t batteryIcon(Adafruit_GFX& g, int16_t right, int16_t top, int16_t h, const GFXfont* f, int percent,
+                    bool charging, bool low, uint16_t color) {
+  const uint16_t bg = color ? 0 : 1;
   char v[8];
-  snprintf(v, sizeof v, "%%%d", app.batteryPercent);
-  const bool low = app.batteryLow();
-  return countCell(g, v, app.charging ? "şarj" : low ? "düşük" : "pil", right, low);
+  snprintf(v, sizeof v, "%%%d", percent);
+  Encoded e(v);
+  Encoded widest("%100");
+  const uint16_t tw = widthOf(g, f, e.s);
+  const int16_t nubW = 4, plugRoom = 8;
+  // Snug: "%100" just clears the plug on the left and the ring on the right.
+  const int16_t bw = widthOf(g, f, widest.s) + plugRoom + 5;
+  const int16_t x = right - nubW - bw;
+  g.fillRect(right - nubW, top + h / 4, nubW, h - h / 2, color);  // terminal
+  if (low) {
+    g.fillRoundRect(x, top, bw, h, 5, color);
+  } else {
+    // A clean 2px ring: filled outer shape, inner shape cut back out.
+    g.fillRoundRect(x, top, bw, h, 5, color);
+    g.fillRoundRect(x + 2, top + 2, bw - 4, h - 4, 3, bg);
+  }
+  const int16_t textLeft = charging ? x + plugRoom : x + 2;  // clear of the plug / the ring
+  drawEnc(g, f, e.s, textLeft + (x + bw - 2 - textLeft - tw) / 2, top + h / 2 + 6, low ? bg : color);
+  if (!charging) return x;
+  // The plug: a head straddling the left edge, two prongs above it, a cable
+  // from the head down to the bottom line. A gap is cut around it first.
+  // The cable stands in for the body's left edge below the head.
+  const int16_t hw = 12, hx = x - hw / 2, hy = top + 1, hh = h / 2 + 1;
+  g.fillRect(hx - 2, top - 1, x + 6 - (hx - 2), h + 2, bg);
+  if (!low) g.fillRect(x + 4, top + 2, 2, h - 4, bg);
+  g.fillRect(hx, hy, hw, hh, color);  // head: a 2px frame
+  g.fillRect(hx + 2, hy + 2, hw - 4, hh - 4, bg);
+  g.fillRect(hx + 2, top - 6, 2, 7, color);  // prongs
+  g.fillRect(hx + hw - 4, top - 6, 2, 7, color);
+  g.fillRect(x - 1, hy + hh, 2, top + h - hy - hh, color);  // cable
+  if (low) g.fillRect(x + 4, top, 2, h, color);
+  else g.fillRect(x + 3, top + h - 2, 3, 2, color);  // bottom line meets the cable's gap
+  g.fillRect(x + 4, top, 2, 2, color);
+  return hx - 2;
+}
+
+// The masthead's battery: the glyph with the charge inside it.
+int16_t batteryCell(Adafruit_GFX& g, const App& app, int16_t right) {
+  return batteryIcon(g, right, 44, 32, &InterMed18, app.batteryPercent, app.charging, app.batteryLow(), 1);
 }
 
 // Small weather glyphs (about 22x16) centered on (cx, cy), drawn with lines.
@@ -295,20 +338,9 @@ void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* 
 }
 
 // Bottom status bar: a hairline, two uppercase labels and an optional hint line.
-// Black tag with white letters, left edge at x, baseline y. Returns its width.
-int16_t alertTag(Adafruit_GFX& g, const char* utf8, int16_t x, int16_t y) {
-  Encoded e(utf8, true);
-  const uint16_t w = trackedWidth(&InterSemi12, e.s, 2);
-  g.fillRoundRect(x - 8, y - 17, w + 16, 24, 4, 1);
-  drawTracked(g, &InterSemi12, e.s, x, y, 2, 0);
-  return w + 16;
-}
-
-// lowBattery: the left text gives way to a "pil düşük · şarj et" tag.
-void statusBar(Adafruit_GFX& g, const char* left, const char* right, const char* hint, bool lowBattery = false) {
+void statusBar(Adafruit_GFX& g, const char* left, const char* right, const char* hint) {
   g.drawFastHLine(0, kBarTop, kW, 1);
-  if (lowBattery) alertTag(g, "Pil düşük · şarj et", kM + 8, kBarTop + 28);
-  else label(g, left, kM, kBarTop + 28);
+  label(g, left, kM, kBarTop + 28);
   label(g, right, kW - kM, kBarTop + 28, 2);
   if (hint) textCentered(g, &Inter14, hint, kBarTop + 54);
 }
@@ -492,7 +524,7 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
                                   : app.syncConfigured ? "TAMAM durum  ·  GERİ odak  ·  yan: raf / eşitle"
                                                     : "TAMAM durum  ·  GERİ odak  ·  yan: raf / Wi-Fi";
   const char* right = !app.sdAvailable ? "SD kart yok" : app.syncNote[0] ? app.syncNote : weekdayOf(app, wd, sizeof wd);
-  statusBar(g, done, right, hint, app.batteryLow());
+  statusBar(g, done, right, hint);
 }
 
 void drawFocus(Adafruit_GFX& g, const App& app, uint32_t nowMs) {
@@ -823,8 +855,7 @@ void drawLibrary(Adafruit_GFX& g, const App& app) {
   char left[24];
   snprintf(left, sizeof left, "%d kitap", lib.count);
   char wd[24];
-  statusBar(g, left, weekdayOf(app, wd, sizeof wd), "SOL/SAĞ kitap  ·  YUKARI/AŞAĞI raf  ·  TAMAM oku  ·  GERİ brifing",
-            app.batteryLow());
+  statusBar(g, left, weekdayOf(app, wd, sizeof wd), "SOL/SAĞ kitap  ·  YUKARI/AŞAĞI raf  ·  TAMAM oku  ·  GERİ brifing");
 }
 
 void drawLendingCard(Adafruit_GFX& g, const App& app) {
@@ -876,31 +907,19 @@ void drawLendingCard(Adafruit_GFX& g, const App& app) {
   }
   if (n == 0) textCentered(g, &Inter14, "Şu an okunan kitap yok.", top + 34);
 
-  // Black foot: the time it went to sleep, the date, the battery. The panel
+  // Black foot: the date over the time it went to sleep, the battery at the right. The panel
   // keeps this image while the device is off, so these are the values at sleep.
   g.fillRect(0, kBarTop, kW, kH - kBarTop, 1);
   if (app.timeText[0]) {
     Encoded tm(app.timeText);
-    drawEnc(g, &Play26, tm.s, kM, kBarTop + 44, 0);
+    drawEnc(g, &Play26, tm.s, kM, kBarTop + 56, 0);
   }
   char wd[24];
-  label(g, app.dateText[0] ? app.dateText : weekdayOf(app, wd, sizeof wd), kW - kM, kBarTop + 24, 2, 0);
+  label(g, app.longDateText[0] ? app.longDateText : app.dateText[0] ? app.dateText : weekdayOf(app, wd, sizeof wd),
+        kM, kBarTop + 22, 0, 0);
   if (app.batteryPercent >= 0) {
-    char bat[40];
-    if (app.batteryLow()) snprintf(bat, sizeof bat, "Pil %%%d · şarj et", app.batteryPercent);
-    else snprintf(bat, sizeof bat, "Pil %%%d%s", app.batteryPercent, app.charging ? " · şarj oluyor" : "");
-    if (app.batteryLow()) {
-      // White tag on the black foot.
-      Encoded e(bat, true);
-      const uint16_t w = trackedWidth(&InterSemi12, e.s, 2);
-      const int16_t x = kW - kM - w;
-      g.fillRoundRect(x - 8, kBarTop + 52 - 17, w + 16, 24, 4, 0);
-      drawTracked(g, &InterSemi12, e.s, x, kBarTop + 52, 2, 1);
-    } else {
-      label(g, bat, kW - kM, kBarTop + 52, 2, 0);
-    }
+    batteryIcon(g, kW - kM, kBarTop + 20, 26, &InterMed18, app.batteryPercent, app.charging, app.batteryLow(), 0);
   }
-  textCentered(g, &Inter14, "GÜÇ ile aç", kBarTop + 40, 0);
 }
 
 void drawReaderFooter(Adafruit_GFX& g, const char* chapter, uint8_t percent, uint32_t page, uint32_t pages,

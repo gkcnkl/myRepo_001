@@ -714,6 +714,8 @@ static void testClock() {
   t.year = 2027, t.month = 2, t.day = 3;
   formatTurkishDate(t, buf, sizeof buf);
   CHECK(strcmp(buf, "Çarşamba, 3 Şubat") == 0);
+  formatTurkishDateLong(t, buf, sizeof buf);
+  CHECK(strcmp(buf, "3 Şubat 2027, Çarşamba") == 0);
 
   LocalTime never;  // RTC never set reads 2000-01-01
   never.year = 2000, never.month = 1, never.day = 1;

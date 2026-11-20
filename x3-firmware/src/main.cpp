@@ -207,6 +207,7 @@ void applySetTimeFile() {
 void updateStatus(bool freshBattery = false) {
   app.dateText[0] = '\0';
   app.timeText[0] = '\0';
+  app.longDateText[0] = '\0';
   freeink::Rtc::DateTime dt;
   if (rtc.present() && rtc.now(dt)) {
     LocalTime t;
@@ -217,6 +218,7 @@ void updateStatus(bool freshBattery = false) {
     t.minute = dt.minute;
     t.second = dt.second;
     formatTurkishDate(t, app.dateText, sizeof app.dateText);
+    formatTurkishDateLong(t, app.longDateText, sizeof app.longDateText);
     if (app.dateText[0]) snprintf(app.timeText, sizeof app.timeText, "%02d:%02d", t.hour, t.minute);
   }
 

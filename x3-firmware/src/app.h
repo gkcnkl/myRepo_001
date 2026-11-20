@@ -64,7 +64,8 @@ struct App {
 
   // Status line, filled by main.cpp before each render.
   char timeText[8] = "";    // "14:32"; empty when the clock is not set
-  char dateText[48] = "";  // "Salı, 10 Kasım"; empty when the clock is not set
+  char dateText[48] = "";
+  char longDateText[48] = "";  // "10 Kasım 2026, Salı" (sleep card)  // "Salı, 10 Kasım"; empty when the clock is not set
   int batteryPercent = -1;  // -1 = unknown
   bool charging = false;
   // At or under this (and not charging) the battery shows as low.
