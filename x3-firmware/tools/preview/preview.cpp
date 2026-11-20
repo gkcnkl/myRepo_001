@@ -137,6 +137,17 @@ int main(int argc, char** argv) {
     app.lib.sortForShelf();
     app.libSelected = 6;
     { Canvas c; ui::drawLibrary(c, app); c.save(out, "8-library"); }
+    {
+      App fin = app;  // a finished book selected: "bitti" with its day
+      BookInfo& b = fin.lib.books[fin.libSelected];
+      b.finished = true;
+      b.percent = 100;
+      b.lastRead = 202611181530ull;
+      b.finishedOn = DateStamp{2026, 11, 20};
+      Canvas c;
+      ui::drawLibrary(c, fin);
+      c.save(out, "8d-library-finished");
+    }
     // X3_BOOKS=<cihaz.txt>: the shelf with the "# kitap | %N | state | last | file" lines of a real device.
     if (const char* path = getenv("X3_BOOKS")) {
       App mine = app;

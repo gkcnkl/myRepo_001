@@ -327,6 +327,25 @@ static void testLibraryModel() {
   CHECK(strcmp(t.title, "Suç ve Ceza") == 0 && strcmp(t.author, "Dostoyevski") == 0);
   CHECK(t.started.year == 2026 && t.started.month == 11 && t.started.day == 10);
   CHECK(t.lastRead == 202611101530ull && t.spine == 7 && t.charOffset == 12345 && t.percent == 42 && !t.finished);
+  CHECK(!t.finishedOn.known());
+  {
+    // finishedOn round-trips; without it the finish day falls back to lastRead.
+    BookInfo f = t;
+    f.finished = true;
+    f.finishedOn = DateStamp{2026, 11, 20};
+    char sbuf[512];
+    const size_t sn = serializeBookState(f, sbuf, sizeof sbuf);
+    BookInfo g{};
+    parseBookState(sbuf, sn, g);
+    CHECK(g.finished && g.finishedOn.year == 2026 && g.finishedOn.month == 11 && g.finishedOn.day == 20);
+    CHECK(g.finishDay().day == 20);
+    BookInfo old{};
+    old.finished = true;
+    old.lastRead = 202611181530ull;
+    CHECK(old.finishDay().year == 2026 && old.finishDay().month == 11 && old.finishDay().day == 18);
+    BookInfo none{};
+    CHECK(!none.finishDay().known());
+  }
 
   Library lib;
   const char* names[] = {"c.epub", "a.epub", "b.epub", "d.txt"};

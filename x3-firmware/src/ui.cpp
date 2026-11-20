@@ -856,7 +856,12 @@ void drawLibrary(Adafruit_GFX& g, const App& app) {
     char stamp[24];
     formatStamp(b.started, stamp, sizeof stamp);
     if (app.libStatus[0]) snprintf(line, sizeof line, "%s", app.libStatus);  // e.g. why it did not open
-    else if (b.finished) snprintf(line, sizeof line, "%s%sbitti", b.author, b.author[0] ? " · " : "");
+    else if (b.finished) {
+      const DateStamp end = b.finishDay();
+      char ended[24] = "";
+      if (end.known()) formatStamp(end, ended, sizeof ended);
+      snprintf(line, sizeof line, "%s%sbitti%s%s", b.author, b.author[0] ? " · " : "", ended[0] ? " " : "", ended);
+    }
     else if (b.lastRead) snprintf(line, sizeof line, "%s%s%%%u · başladı %s", b.author, b.author[0] ? " · " : "", b.percent, stamp);
     else snprintf(line, sizeof line, "%s%shenüz açılmadı", b.author, b.author[0] ? " · " : "");
     text(g, &InterMed18, line, kM, dy + 72, kW - 2 * kM);

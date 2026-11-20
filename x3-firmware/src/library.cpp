@@ -96,6 +96,18 @@ bool bookFromFileName(const char* name, uint32_t size, BookInfo& out) {
   return true;
 }
 
+namespace {
+// "2026-11-20" into `out`; left unchanged when not a sane date.
+void parseDay(const char* val, DateStamp& out) {
+  int y = 0, m = 0, d = 0;
+  if (sscanf(val, "%d-%d-%d", &y, &m, &d) == 3 && y > 2000 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+    out.year = static_cast<uint16_t>(y);
+    out.month = static_cast<uint8_t>(m);
+    out.day = static_cast<uint8_t>(d);
+  }
+}
+}  // namespace
+
 void parseBookState(const char* data, size_t len, BookInfo& b) {
   size_t pos = 0;
   while (pos < len) {
@@ -116,14 +128,9 @@ void parseBookState(const char* data, size_t len, BookInfo& b) {
     auto key = [&](const char* k) { return strlen(k) == klen && strncmp(line, k, klen) == 0; };
     if (key("title")) copy(b.title, sizeof b.title, v, vn), cleanTitle(b.title);
     else if (key("author")) copy(b.author, sizeof b.author, v, vn);
-    else if (key("started")) {
-      int y = 0, m = 0, d = 0;
-      if (sscanf(val, "%d-%d-%d", &y, &m, &d) == 3 && y > 2000 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-        b.started.year = static_cast<uint16_t>(y);
-        b.started.month = static_cast<uint8_t>(m);
-        b.started.day = static_cast<uint8_t>(d);
-      }
-    } else if (key("lastRead")) b.lastRead = strtoull(val, nullptr, 10);
+    else if (key("started")) parseDay(val, b.started);
+    else if (key("finishedOn")) parseDay(val, b.finishedOn);
+    else if (key("lastRead")) b.lastRead = strtoull(val, nullptr, 10);
     else if (key("spine")) b.spine = static_cast<uint16_t>(strtoul(val, nullptr, 10));
     else if (key("char")) b.charOffset = static_cast<uint32_t>(strtoul(val, nullptr, 10));
     else if (key("percent")) {
@@ -133,10 +140,25 @@ void parseBookState(const char* data, size_t len, BookInfo& b) {
   }
 }
 
+DateStamp BookInfo::finishDay() const {
+  if (finishedOn.known()) return finishedOn;
+  DateStamp d;
+  if (lastRead >= 200001010000ull && lastRead < 210001010000ull) {
+    d.year = static_cast<uint16_t>(lastRead / 100000000ull);
+    d.month = static_cast<uint8_t>(lastRead / 1000000ull % 100);
+    d.day = static_cast<uint8_t>(lastRead / 10000ull % 100);
+  }
+  return d;
+}
+
 size_t serializeBookState(const BookInfo& b, char* buf, size_t bufSize) {
   int n = snprintf(buf, bufSize, "title: %s\nauthor: %s\n", b.title, b.author);
   if (b.started.known() && n >= 0 && static_cast<size_t>(n) < bufSize) {
     n += snprintf(buf + n, bufSize - n, "started: %04u-%02u-%02u\n", b.started.year, b.started.month, b.started.day);
+  }
+  if (b.finishedOn.known() && n >= 0 && static_cast<size_t>(n) < bufSize) {
+    n += snprintf(buf + n, bufSize - n, "finishedOn: %04u-%02u-%02u\n", b.finishedOn.year, b.finishedOn.month,
+                  b.finishedOn.day);
   }
   if (n >= 0 && static_cast<size_t>(n) < bufSize) {
     n += snprintf(buf + n, bufSize - n, "lastRead: %llu\nspine: %u\nchar: %lu\npercent: %u\nfinished: %d\n",

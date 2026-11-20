@@ -27,6 +27,11 @@ struct BookInfo {
   uint32_t charOffset;
   uint8_t percent;
   bool finished;
+  DateStamp finishedOn;  // the day the last page was reached (unknown for older states)
+
+  // The day to show as "bitti": finishedOn, or for books finished before it
+  // was kept, the day they were last read. Unknown when neither is set.
+  DateStamp finishDay() const;
 };
 
 // Removes "[...]" parts and a leading "YYYY-MM-DD " date from a shelf title
@@ -38,7 +43,7 @@ void cleanTitle(char* title);
 bool bookFromFileName(const char* name, uint32_t size, BookInfo& out);
 
 // Reading state file: "key: value" lines (title, author, started, lastRead,
-// spine, char, percent, finished).
+// spine, char, percent, finished, finishedOn).
 void parseBookState(const char* data, size_t len, BookInfo& b);
 size_t serializeBookState(const BookInfo& b, char* buf, size_t bufSize);
 

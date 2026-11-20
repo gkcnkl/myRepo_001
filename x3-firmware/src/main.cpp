@@ -452,6 +452,25 @@ void readerTrace(const char* step, int value) {
 }
 
 // Opens app.lib.books[app.libSelected]; on failure returns to the shelf.
+// The hotspot's password: 8 random digits made once on this device and kept in
+// NVS ("x3wifi"), so a phone that joined once joins again. Never in the source.
+void hotspotPassword(char* out, size_t n) {
+  Preferences p;
+  if (p.begin("x3wifi", false)) {
+    String kept = p.getString("appass", "");
+    if (kept.length() == 8) {
+      snprintf(out, n, "%s", kept.c_str());
+      p.end();
+      return;
+    }
+    snprintf(out, n, "%08lu", static_cast<unsigned long>(esp_random() % 100000000UL));
+    p.putString("appass", out);
+    p.end();
+    return;
+  }
+  snprintf(out, n, "%08lu", static_cast<unsigned long>(esp_random() % 100000000UL));  // NVS unavailable
+}
+
 // Reading typography lives in NVS ("x3read"), applied before each open.
 void loadTypography() {
   reader::Typography t;
@@ -795,8 +814,8 @@ void handlePostSettings();
 
 void startWifi() {
   if (wifiOn) return;
-  // A fresh 8-digit password each time the hotspot opens.
-  snprintf(app.wifiPass, sizeof app.wifiPass, "%08lu", static_cast<unsigned long>(esp_random() % 100000000UL));
+  // The same 8-digit password every time (made once, kept in NVS).
+  hotspotPassword(app.wifiPass, sizeof app.wifiPass);
   snprintf(app.wifiSsid, sizeof app.wifiSsid, "%s", kHotspotName);
   WiFi.mode(WIFI_AP);
   if (!WiFi.softAP(app.wifiSsid, app.wifiPass)) {
@@ -1068,7 +1087,10 @@ void loop() {
         const bool moved = fx.pageDelta > 0 ? bookReader.nextPage() : bookReader.prevPage();
         if (!moved) break;  // first/last page: nothing to redraw
         if (fx.pageDelta > 0 && bookReader.percent() >= 100 && openBookIndex >= 0) {
-          app.lib.books[openBookIndex].finished = true;
+          BookInfo& done = app.lib.books[openBookIndex];
+          LocalTime t;
+          if (!done.finished && currentTime(t)) done.finishedOn = DateStamp{t.year, t.month, t.day};
+          done.finished = true;
         }
       }
       if (fx.redraw) render(fx.fullRefresh || app.screen != before, fx.deepClean);
