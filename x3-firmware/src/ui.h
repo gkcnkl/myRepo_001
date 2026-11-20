@@ -22,8 +22,6 @@ void drawLibrary(Adafruit_GFX& g, const App& app);
 void drawLendingCard(Adafruit_GFX& g, const App& app);
 // Status line under a book page (the page itself is drawn by the reader).
 // `turkish` picks the uppercase rule for the chapter title (i -> İ or I).
-// A short note at the footer's left, over the chapter title (gray test).
-void drawReaderNote(Adafruit_GFX& g, const char* note);
 void drawReaderFooter(Adafruit_GFX& g, const char* chapter, uint8_t percent, uint32_t page, uint32_t pages,
                       bool turkish = true);
 // Full-screen message while a book opens / when it fails.

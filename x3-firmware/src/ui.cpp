@@ -942,15 +942,6 @@ void drawLendingCard(Adafruit_GFX& g, const App& app) {
   }
 }
 
-void drawReaderNote(Adafruit_GFX& g, const char* note) {
-  const int16_t y = kH - 40;
-  g.fillRect(0, y + 8, kW / 2, 32, 0);
-  Encoded e(note, true);
-  const uint16_t w = trackedWidth(&InterSemi12, e.s, 2);
-  g.fillRoundRect(kM - 6, y + 12, w + 12, 22, 4, 1);
-  drawTracked(g, &InterSemi12, e.s, kM, y + 28, 2, 0);
-}
-
 void drawReaderFooter(Adafruit_GFX& g, const char* chapter, uint8_t percent, uint32_t page, uint32_t pages,
                       bool turkish) {
   const int16_t y = kH - 40;

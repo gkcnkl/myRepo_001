@@ -581,7 +581,7 @@ void renderReaderPage() {
 // images' region, then both absolute gray planes in 8-row strips (the planes
 // never exist whole: 1.6 KB of strip buffers), then the gray refresh. The
 // driver makes the next B/W refresh a clean one. False when the panel says no.
-char gGrayNote[40] = "";  // why gray images are off on this panel (test build)
+char gGrayNote[40] = "";  // why gray images are off on this panel (logged)
 
 // A gray page leaves residue that B/W refreshes do not clear (its title came
 // back as a ghost two pages later): the next render starts with a white pass.
@@ -592,9 +592,7 @@ bool showGrayPage(const gray::Map* maps, int count) {
   // the X3 the absolute gray drive leaves black and white pixels as the base
   // shows them and only nudges the gray states, so the dither carries the
   // tone (a base thresholded to the levels came out as two flat halves on the
-  // device). It is shown with a full-strength HALF refresh first: the gray
-  // base waveform is differential and left the previous page as a ghost.
-  epd.displayBuffer(EInkDisplay::HALF_REFRESH);
+  // device). The panel is white when this runs (see render()).
   if (!epd.displayGrayscaleBase(freeink::GrayscaleMode::Absolute, EInkDisplay::HALF_REFRESH)) return false;
   // No settle (preconditionGrayscale) pass: on the device it washed the
   // images out.
@@ -614,7 +612,8 @@ bool showGrayPage(const gray::Map* maps, int count) {
 
 // screenChange -> HALF refresh; deepClean -> white pass first (no ghosts).
 void render(bool screenChange, bool deepClean = false) {
-  if (deepClean || grayOnPanel) cleanPanel();
+  const bool cleanStart = deepClean || grayOnPanel;
+  if (cleanStart) cleanPanel();
   grayOnPanel = false;
   updateStatus();
   switch (app.screen) {
@@ -627,14 +626,20 @@ void render(bool screenChange, bool deepClean = false) {
       renderReaderPage();
       if (bookReader.imageCount() > 0) {
         const gray::Map* maps = nullptr;
-        const int n = bookReader.grayMaps(&maps);
+        int n = bookReader.grayMaps(&maps);
+        if (n > 0 && !cleanStart) {
+          // A gray page goes onto a white panel: the gray drive brought the
+          // previous page's text back as a ghost inside the images. The white
+          // pass clears the frame too, so the page is drawn again.
+          cleanPanel();
+          renderReaderPage();
+          n = bookReader.grayMaps(&maps);
+        }
         if (n > 0 && showGrayPage(maps, n)) {
           readerPageTurns = 0;
           return;
         }
-        // Test build: why this page with images stayed black and white.
-        ui::drawReaderNote(screen, !gGrayNote[0] ? (n == 0 ? "gri: resim çözülemedi" : "gri: panel kabul etmedi")
-                                                 : gGrayNote);
+        Serial.printf("[x3] page with images stayed B/W: %s\n", gGrayNote[0] ? gGrayNote : n == 0 ? "no gray map" : "panel refused");
       }
       // Page turns use FAST refresh; a clean HALF every few pages keeps text crisp.
       if (!screenChange && ++readerPageTurns < kReaderPagesBeforeClean) {
