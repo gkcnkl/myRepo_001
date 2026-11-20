@@ -363,11 +363,14 @@ SyncOutcome runSync(const SyncSettings& s, TaskList& tasks, const Library* lib, 
   }
 
   // 3) Push cihaz.txt when the device's view changed since the last push.
+  // The two encode buffers are taken only after the file's sha is read: the
+  // TLS request needs the heap, and a body cut short leaves the sha empty,
+  // which GitHub refuses with 422.
   char* state = static_cast<char*>(malloc(kMaxFile));
-  char* b64 = static_cast<char*>(malloc(kMaxFile * 4 / 3 + 8));
-  char* put = static_cast<char*>(malloc(kMaxFile * 4 / 3 + 512));
+  char* b64 = nullptr;
+  char* put = nullptr;
   bool pushed = false;
-  if (state != nullptr && b64 != nullptr && put != nullptr) {
+  if (state != nullptr) {
     // The hash covers the briefing and the books' reading state (no stamp).
     const size_t stateLen = buildDeviceStateFile(tasks, lib, "", state, kMaxFile);
     const uint32_t h = stateLen > 0 ? hashText(state) : 0;
@@ -381,14 +384,35 @@ SyncOutcome runSync(const SyncSettings& s, TaskList& tasks, const Library* lib, 
       char when[24] = "saat bilinmiyor";
       if (haveTime) stamp(when, sizeof when, now);
       const size_t n = buildDeviceStateFile(tasks, lib, when, state, kMaxFile);
-      String meta;
-      char sha[48] = "";
-      const int metaCode = github(s, "GET", "cihaz.txt", "application/vnd.github+json", nullptr, meta);
-      if (metaCode == 200) jsonStringField(meta.c_str(), "sha", sha, sizeof sha);
-      meta = String();
-      if ((metaCode == 200 || metaCode == 404) &&
-          base64Encode(reinterpret_cast<const uint8_t*>(state), n, b64, kMaxFile * 4 / 3 + 8) > 0 &&
-          buildPutBody("X3: cihaz durumu", b64, sha, s.branch, put, kMaxFile * 4 / 3 + 512)) {
+      // Up to two rounds: a 409/422 (stale or missing sha) reads the sha again.
+      for (int round = 0; round < 2 && !pushed; ++round) {
+        char sha[48] = "";
+        int metaCode = 0;
+        for (int tries = 0; tries < 2 && sha[0] == '\0'; ++tries) {
+          String meta;
+          metaCode = github(s, "GET", "cihaz.txt", "application/vnd.github+json", nullptr, meta);
+          if (metaCode != 200) break;  // 404: a new file, no sha needed
+          jsonStringField(meta.c_str(), "sha", sha, sizeof sha);
+        }
+        if (metaCode != 200 && metaCode != 404) {
+          snprintf(out.message, sizeof out.message, "%s (%d)", httpMessage(metaCode), metaCode);
+          break;
+        }
+        if (metaCode == 200 && sha[0] == '\0') {
+          snprintf(out.message, sizeof out.message, "GitHub yanıtı okunamadı, tekrar dene");
+          break;
+        }
+        if (b64 == nullptr) b64 = static_cast<char*>(malloc(kMaxFile * 4 / 3 + 8));
+        if (put == nullptr) put = static_cast<char*>(malloc(kMaxFile * 4 / 3 + 512));
+        if (b64 == nullptr || put == nullptr) {
+          snprintf(out.message, sizeof out.message, "Eşitleme için bellek yetmedi");
+          break;
+        }
+        if (base64Encode(reinterpret_cast<const uint8_t*>(state), n, b64, kMaxFile * 4 / 3 + 8) == 0 ||
+            !buildPutBody("X3: cihaz durumu", b64, sha, s.branch, put, kMaxFile * 4 / 3 + 512)) {
+          snprintf(out.message, sizeof out.message, "Cihaz durumu hazırlanamadı");
+          break;
+        }
         String resp;
         code = github(s, "PUT", "cihaz.txt", "application/vnd.github+json", put, resp);
         pushed = code == 200 || code == 201;
@@ -396,11 +420,11 @@ SyncOutcome runSync(const SyncSettings& s, TaskList& tasks, const Library* lib, 
           p.begin(kNamespace, false);
           p.putUInt("pushed", h);
           p.end();
+          out.message[0] = '\0';
         } else {
           snprintf(out.message, sizeof out.message, "Gönderilemedi: %s (%d)", httpMessage(code), code);
+          if (code != 409 && code != 422) break;  // only a stale or missing sha is worth a second round
         }
-      } else if (metaCode != 200 && metaCode != 404) {
-        snprintf(out.message, sizeof out.message, "%s (%d)", httpMessage(metaCode), metaCode);
       }
     }
   } else {
