@@ -136,6 +136,8 @@ class BookReader {
   bool render(uint8_t* framebuffer);
   // The gray maps the last render() kept (0 when none, or gray is off). They
   // live in the reader's parse arena: valid until the next page operation.
+  // Images on the page the last render() drew (0 for text-only pages).
+  int imageCount() const { return imageCount_; }
   int grayMaps(const gray::Map** out) const {
     *out = grayMaps_;
     return grayCount_;
@@ -167,6 +169,7 @@ class BookReader {
   uint16_t firstSpine_ = 0;  // 1 when a cover-only first chapter is skipped
   gray::Map grayMaps_[kMaxGrayImages];
   int grayCount_ = 0;
+  int imageCount_ = 0;
   uint32_t page_ = 0;
   uint32_t chapterPages_ = 0;
 

@@ -562,8 +562,17 @@ void renderReaderPage() {
 // images' region, then both absolute gray planes in 8-row strips (the planes
 // never exist whole: 1.6 KB of strip buffers), then the gray refresh. The
 // driver makes the next B/W refresh a clean one. False when the panel says no.
+char gGrayNote[40] = "";  // why gray images are off on this panel (test build)
+
 bool showGrayPage(const gray::Map* maps, int count) {
   if (!epd.displayGrayscaleBase(freeink::GrayscaleMode::Absolute, EInkDisplay::HALF_REFRESH)) return false;
+  // Test build: this note reaches the panel only through the gray planes, so
+  // seeing it means the gray refresh itself ran.
+  {
+    char note[32];
+    snprintf(note, sizeof note, "gri · %d resim", count);
+    ui::drawReaderNote(screen, note);
+  }
   int x0 = gray::kPanelCols, y0 = gray::kPanelRows, x1 = 0, y1 = 0;  // panel coordinates
   for (int i = 0; i < count; ++i) {
     const gray::Map& m = maps[i];
@@ -601,13 +610,16 @@ void render(bool screenChange, bool deepClean = false) {
     case Screen::Library: ui::drawLibrary(screen, app); break;
     case Screen::Reader:
       renderReaderPage();
-      {
+      if (bookReader.imageCount() > 0) {
         const gray::Map* maps = nullptr;
         const int n = bookReader.grayMaps(&maps);
         if (n > 0 && showGrayPage(maps, n)) {
           readerPageTurns = 0;
           return;
         }
+        // Test build: why this page with images stayed black and white.
+        ui::drawReaderNote(screen, !gGrayNote[0] ? (n == 0 ? "gri: resim çözülemedi" : "gri: panel kabul etmedi")
+                                                 : gGrayNote);
       }
       // Page turns use FAST refresh; a clean HALF every few pages keeps text crisp.
       if (!screenChange && ++readerPageTurns < kReaderPagesBeforeClean) {
@@ -955,6 +967,8 @@ void setup() {
   {
     const auto gray = epd.grayscaleCapabilities(freeink::GrayscaleMode::Absolute);
     reader::setGrayImages(gray.supported() && gray.stripUploads);
+    if (!gray.supported()) snprintf(gGrayNote, sizeof gGrayNote, "gri kapalı: panel desteklemiyor");
+    else if (!gray.stripUploads) snprintf(gGrayNote, sizeof gGrayNote, "gri kapalı: şerit yok");
     Serial.printf("[x3] gray images: %s\n", gray.supported() && gray.stripUploads ? "on" : "off");
   }
   epd.requestResync();
@@ -1004,13 +1018,37 @@ void loop() {
   input.update();
   const uint32_t now = millis();
 
-  if (waitingForRelease) {
+  // A key with a long press waits: held past kLongPressMs it fires the long
+  // press (then waits for the release), let go sooner it is a normal press.
+  static int heldKey = -1;
+  static uint32_t heldSince = 0;
+  int fire = -1;
+  bool longPress = false;
+  if (heldKey >= 0) {
+    if (!input.isPressed(heldKey)) {
+      fire = heldKey;
+      heldKey = -1;
+    } else if (now - heldSince >= App::kLongPressMs) {
+      fire = heldKey;
+      longPress = true;
+      heldKey = -1;
+      waitingForRelease = true;
+    }
+  }
+
+  if (waitingForRelease && fire < 0) {
     if (!anyButtonDown()) waitingForRelease = false;
   } else {
     for (uint8_t b = InputManager::BTN_BACK; b <= InputManager::BTN_POWER; ++b) {
-      if (!input.wasPressed(b)) continue;
+      if (fire >= 0 ? b != fire : !input.wasPressed(b)) continue;
+      if (fire < 0 && app.hasLongPress(static_cast<Button>(b))) {
+        heldKey = b;
+        heldSince = now;
+        break;
+      }
       const Screen before = app.screen;
-      const Effects fx = app.onButton(static_cast<Button>(b), now);
+      const Effects fx = longPress ? app.onLongPress(static_cast<Button>(b), now)
+                                   : app.onButton(static_cast<Button>(b), now);
       if (fx.closeBook) closeBook();
       if (fx.sleep) goToSleep();
       if (fx.stopWifi) {

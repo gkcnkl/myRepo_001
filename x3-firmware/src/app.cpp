@@ -254,6 +254,17 @@ Effects App::onButton(Button b, uint32_t nowMs) {
   return fx;
 }
 
+Effects App::onLongPress(Button b, uint32_t nowMs) {
+  Effects fx;
+  if (!hasLongPress(b)) return fx;
+  touch(nowMs);
+  wifiReturn = Screen::List;
+  screen = Screen::Wifi;
+  wifiStatus[0] = '\0';
+  fx.startWifi = fx.redraw = fx.fullRefresh = true;
+  return fx;
+}
+
 Effects App::onTick(uint32_t nowMs) {
   Effects fx;
   if (screen == Screen::Focus) {

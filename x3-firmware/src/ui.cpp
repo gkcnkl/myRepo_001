@@ -343,7 +343,19 @@ void statusBar(Adafruit_GFX& g, const char* left, const char* right, const char*
   const bool bare = !left[0] && !right[0];
   label(g, left, kM, kBarTop + 28);
   label(g, right, kW - kM, kBarTop + 28, 2);
-  if (hint) textCentered(g, &Inter14, hint, bare ? kBarTop + 40 : kBarTop + 54);
+  if (!hint) return;
+  // A two-line hint ("...\n...") fills a bare bar: one line above the other.
+  const char* nl = strchr(hint, '\n');
+  if (nl && bare) {
+    char first[96];
+    const size_t n = static_cast<size_t>(nl - hint) < sizeof first - 1 ? static_cast<size_t>(nl - hint) : sizeof first - 1;
+    memcpy(first, hint, n);
+    first[n] = '\0';
+    textCentered(g, &Inter14, first, kBarTop + 28);
+    textCentered(g, &Inter14, nl + 1, kBarTop + 52);
+    return;
+  }
+  textCentered(g, &Inter14, nl ? nl + 1 : hint, bare ? kBarTop + 40 : kBarTop + 54);
 }
 
 void indicatorGrid(Adafruit_GFX& g, const TaskList& t) {
@@ -519,10 +531,11 @@ void drawList(Adafruit_GFX& g, const App& app, bool sleeping) {
     textCentered(g, &Inter14, "Açmak için GÜÇ tuşuna bas", kBarTop + 54, 0);
     return;
   }
-  // Side keys: left = shelf, right = sync (Wi-Fi page when not set up).
-  const char* hint = t.count == 0 ? (app.syncConfigured ? "sol yan raf  ·  sağ yan eşitle"
+  // Side keys: left = shelf, right = sync, held = Wi-Fi page (a press opens
+  // it when sync is not set up). Two lines when a note leaves the bar bare.
+  const char* hint = t.count == 0 ? (app.syncConfigured ? "sol yan raf  ·  sağ yan eşitle\nsağ yanı basılı tut: Wi-Fi sayfası"
                                                         : "sol yan raf  ·  sağ yan Wi-Fi")
-                                  : app.syncConfigured ? "TAMAM durum  ·  GERİ odak  ·  yan: raf / eşitle"
+                                  : app.syncConfigured ? "TAMAM durum  ·  GERİ odak  ·  sol yan raf\nsağ yan eşitle  ·  basılı tut: Wi-Fi sayfası"
                                                     : "TAMAM durum  ·  GERİ odak  ·  yan: raf / Wi-Fi";
   // The day and the "x / n" count are already in the masthead: only news here.
   const char* right = !app.sdAvailable ? "SD kart yok" : app.syncNote[0] ? app.syncNote : "";
@@ -922,6 +935,15 @@ void drawLendingCard(Adafruit_GFX& g, const App& app) {
   if (app.batteryPercent >= 0) {
     batteryIcon(g, kW - kM, kBarTop + 20, 26, &InterMed18, app.batteryPercent, app.charging, app.batteryLow(), 0);
   }
+}
+
+void drawReaderNote(Adafruit_GFX& g, const char* note) {
+  const int16_t y = kH - 40;
+  g.fillRect(0, y + 8, kW / 2, 32, 0);
+  Encoded e(note, true);
+  const uint16_t w = trackedWidth(&InterSemi12, e.s, 2);
+  g.fillRoundRect(kM - 6, y + 12, w + 12, 22, 4, 1);
+  drawTracked(g, &InterSemi12, e.s, kM, y + 28, 2, 0);
 }
 
 void drawReaderFooter(Adafruit_GFX& g, const char* chapter, uint8_t percent, uint32_t page, uint32_t pages,

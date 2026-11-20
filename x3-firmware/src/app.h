@@ -84,6 +84,11 @@ struct App {
   void touch(uint32_t nowMs) { lastInputMs = nowMs; }
 
   Effects onButton(Button b, uint32_t nowMs);
+  // A key held down for kLongPressMs. Only the right side key on the list has
+  // a long press: it opens the Wi-Fi page (a short press syncs).
+  static constexpr uint32_t kLongPressMs = 700;
+  bool hasLongPress(Button b) const { return b == Button::Down && screen == Screen::List && syncConfigured; }
+  Effects onLongPress(Button b, uint32_t nowMs);
   Effects onTick(uint32_t nowMs);
 
   uint32_t focusElapsed(uint32_t nowMs) const;

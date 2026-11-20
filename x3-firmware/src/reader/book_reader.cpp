@@ -425,6 +425,7 @@ void BookReader::keepGrayMaps(const freeink::book::Page& page) {
 bool BookReader::render(uint8_t* fb) {
   Impl& m = *impl_;
   grayCount_ = 0;
+  imageCount_ = 0;
   memset(fb, 0xFF, static_cast<size_t>(kPageH / 8) * kPageW);  // panel: 792 x 528, 99 bytes/row
   if (!open_ || !m.pagesOpen || chapterPages_ == 0) return false;
   m.scratch.reset();
@@ -432,6 +433,7 @@ bool BookReader::render(uint8_t* fb) {
   trace("sayfa", static_cast<int>(page_));
   if (m.pages.readPage(page_, m.scratch, &page) != BookStatus::Ok) return false;
   const size_t pageMark = m.scratch.mark();  // the page's own data ends here
+  imageCount_ = m.isText ? 0 : page.imageCount;
   FrameTarget target{fb, kPageH, kPageW, kPageH / 8, FrameFormat::Mono1Sharp, FrameRotation::Portrait};
   const ZipCatalog& zip = m.book.zip();
   // Images first (they decode through the scratch arena), only when small

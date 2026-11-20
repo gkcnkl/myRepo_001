@@ -95,7 +95,7 @@ summary:focus-visible{outline:2px solid var(--lila);outline-offset:2px}
 <h1>Aktarım</h1>
 <div class="rule"></div>
 <div class="dateline"><span class="d" id="clock">Saat ayarlanıyor…</span><span id="dl_books"></span><span id="dl_tasks"></span></div>
-<p class="fixed">Cihaz yalnız eşitleme tuşuna (listede sağ yan tuş) basınca kayıtlı Wi-Fi'a bağlanıp depoyla eşitlenir. Bu sayfa yalnız ayar, kitap ve elle düzeltme içindir.</p>
+<p class="fixed">Bu sayfa listede sağ yan tuşu basılı tutunca açılır. Cihaz yalnız eşitleme tuşuna (listede sağ yan tuşa kısa bas) basınca kayıtlı Wi-Fi'a bağlanıp depoyla eşitlenir. Bu sayfa yalnız ayar, kitap ve elle düzeltme içindir.</p>
 
 <div class="sec">
 <h2>Brifing</h2><div class="hr"></div>
