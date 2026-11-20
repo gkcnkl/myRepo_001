@@ -77,6 +77,8 @@ struct App {
   char wifiPass[16] = "";
   char wifiUrl[32] = "";
   char wifiStatus[80] = "";
+  uint32_t lastSyncMin = 0;  // minutes since 2000 of the last good sync (0 = never)
+  uint32_t nowMin = 0;       // now, same scale (0 = clock not set)
   char syncNote[64] = "";  // "Eşitlendi 07:02" or why it failed (status bar)
   bool syncConfigured = false;
 

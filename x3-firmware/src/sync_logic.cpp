@@ -251,3 +251,15 @@ bool manifestFind(const char* manifest, const char* name, char* sha, size_t shaS
   }
   return false;
 }
+
+bool syncAgeText(uint32_t lastMin, uint32_t nowMin, char* out, size_t outSize) {
+  if (outSize == 0) return false;
+  out[0] = '\0';
+  if (lastMin == 0 || nowMin == 0 || nowMin < lastMin) return false;
+  const uint32_t days = nowMin / 1440 - lastMin / 1440;
+  const unsigned hh = lastMin % 1440 / 60, mm = lastMin % 60;
+  if (days == 0) snprintf(out, outSize, "eşitlendi %02u:%02u", hh, mm);
+  else if (days == 1) snprintf(out, outSize, "eşitlendi dün %02u:%02u", hh, mm);
+  else snprintf(out, outSize, "eşitlendi %lu gün önce", static_cast<unsigned long>(days));
+  return nowMin - lastMin > kStaleSyncMin;
+}

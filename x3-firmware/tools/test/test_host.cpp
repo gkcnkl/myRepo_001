@@ -770,6 +770,17 @@ static void testClock() {
 }
 
 
+static void testSyncAge() {
+  char b[48];
+  const uint32_t day = 1440, now = 9600 * day + 10 * 60 + 30;  // 10:30
+  CHECK(!syncAgeText(0, now, b, sizeof b) && b[0] == '\0');
+  CHECK(!syncAgeText(now - 46, now, b, sizeof b) && strcmp(b, "eşitlendi 09:44") == 0);
+  CHECK(syncAgeText(now - 7 * 60, now, b, sizeof b) && strcmp(b, "eşitlendi 03:30") == 0);  // stale
+  CHECK(syncAgeText(now - 13 * 60 - 20, now, b, sizeof b) && strcmp(b, "eşitlendi dün 21:10") == 0);
+  CHECK(syncAgeText(now - 3 * day, now, b, sizeof b) && strcmp(b, "eşitlendi 3 gün önce") == 0);
+  CHECK(!syncAgeText(now, now - 5, b, sizeof b));  // clock behind the stamp: nothing
+}
+
 static void testGray() {
   // Quantize: the ends stay pure, mid gray dithers between the middle levels.
   for (int y = 0; y < 4; ++y)
@@ -860,6 +871,7 @@ int main() {
   testShelfLayout();
   testLibraryNavigation();
   testGray();
+  testSyncAge();
   if (failures) {
     printf("%d check(s) failed\n", failures);
     return 1;

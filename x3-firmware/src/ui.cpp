@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "sync_logic.h"
 #include "fonts/Inter14.h"
 #include "fonts/InterMed18.h"
 #include "fonts/InterSemi12.h"
@@ -292,6 +293,18 @@ void bigWeatherIcon(Adafruit_GFX& g, const char* kind, int16_t cx, int16_t cy) {
 void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* title, bool showCounts,
               bool showSubtitle = true, const char* dateline = nullptr) {
   label(g, eyebrow, kM, 26);
+  // The briefing's age at the right of the top line; inverted once stale.
+  if (showCounts && app.syncConfigured) {
+    char age[40];
+    const bool stale = syncAgeText(app.lastSyncMin, app.nowMin, age, sizeof age);
+    if (age[0]) {
+      Encoded e(age, true);
+      const uint16_t w = trackedWidth(&InterSemi12, e.s, 2);
+      const int16_t x = kW - kM - w;
+      if (stale) g.fillRoundRect(x - 6, 26 - 16, w + 12, 22, 4, 1);
+      drawTracked(g, &InterSemi12, e.s, x, 26, 2, stale ? 0 : 1);
+    }
+  }
 
   int16_t countsLeft = kW - kM;
   if (showCounts) {

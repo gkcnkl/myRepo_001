@@ -48,6 +48,8 @@ int main(int argc, char** argv) {
   app.selected = 1;
   strcpy(app.dateText, "Salı, 10 Kasım");
   strcpy(app.timeText, "22:47");
+  app.nowMin = 9600u * 1440 + 10 * 60 + 30;  // 10:30
+  app.lastSyncMin = app.nowMin - 46;        // synced 09:44
   strcpy(app.longDateText, "10 Kasım 2026, Salı");
   app.batteryPercent = 84;
 
@@ -183,6 +185,7 @@ int main(int argc, char** argv) {
       App low = app;  // low battery: inverted tags on the card, the briefing and the shelf
       low.batteryPercent = 12;
       { Canvas c; ui::drawLendingCard(c, low); c.save(out, "9b-lending-card-low"); }
+      low.lastSyncMin = low.nowMin - 13 * 60 - 20;  // and an old sync: the stale tag
       { Canvas c; ui::drawList(c, low, false); c.save(out, "1b-list-low-battery"); }
       { Canvas c; ui::drawLibrary(c, low); c.save(out, "8c-library-low-battery"); }
       App chg = app;

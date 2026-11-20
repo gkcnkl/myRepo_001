@@ -7,6 +7,13 @@
 #include "library.h"
 #include "tasks.h"
 
+// How old the last sync is, for the briefing's top line: "eşitlendi 09:44"
+// (today), "eşitlendi dün 21:10", "eşitlendi 3 gün önce". Times are minutes
+// since 2000 (local); 0 = unknown: empty text. Returns true when the sync is
+// older than kStaleSyncMin (the briefing may be out of date).
+constexpr uint32_t kStaleSyncMin = 6 * 60;
+bool syncAgeText(uint32_t lastMin, uint32_t nowMin, char* out, size_t outSize);
+
 // Carries the device's marks into `fresh` (just downloaded): a task (same
 // time + text) done or cancelled in `local` stays so. A task done on the
 // server stays done. Returns how many marks were carried over.

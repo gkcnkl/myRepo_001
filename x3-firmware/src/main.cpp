@@ -207,6 +207,12 @@ void applySetTimeFile() {
 void updateStatus(bool freshBattery = false) {
   app.dateText[0] = '\0';
   app.timeText[0] = '\0';
+  app.nowMin = 0;
+  static bool lastSyncRead = false;  // NVS once per boot (every sync ends in a restart)
+  if (!lastSyncRead) {
+    app.lastSyncMin = lastSyncMinutes();
+    lastSyncRead = true;
+  }
   app.longDateText[0] = '\0';
   freeink::Rtc::DateTime dt;
   if (rtc.present() && rtc.now(dt)) {
@@ -219,6 +225,7 @@ void updateStatus(bool freshBattery = false) {
     t.second = dt.second;
     formatTurkishDate(t, app.dateText, sizeof app.dateText);
     formatTurkishDateLong(t, app.longDateText, sizeof app.longDateText);
+    app.nowMin = isPlausible(t) ? minutesSince2000(t) : 0;
     if (app.dateText[0]) snprintf(app.timeText, sizeof app.timeText, "%02d:%02d", t.hour, t.minute);
   }
 
