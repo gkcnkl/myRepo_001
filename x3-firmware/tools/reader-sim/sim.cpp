@@ -96,6 +96,24 @@ static void savePortrait(const uint8_t* fb, const char* path) {
   fclose(f);
 }
 
+// The gray pass as the device sends it: both absolute planes built strip by
+// strip, read back as four tones (black, dark, light, white).
+static void saveGray(const uint8_t* fb, const gray::Map* maps, int count, const char* path) {
+  static uint8_t lsb[gray::kPanelRows * gray::kRowBytes], msb[gray::kPanelRows * gray::kRowBytes];
+  for (int row = 0; row < gray::kPanelRows; row += 8)
+    gray::buildStrip(fb, maps, count, row, 8, lsb + row * gray::kRowBytes, msb + row * gray::kRowBytes);
+  FILE* f = fopen(path, "wb");
+  fprintf(f, "P5\n528 792\n255\n");
+  for (int y = 0; y < 792; ++y)
+    for (int x = 0; x < 528; ++x) {
+      const int px = y, py = 527 - x;
+      const uint8_t m = 0x80 >> (px & 7);
+      const int l = (lsb[py * 99 + (px >> 3)] & m) ? 1 : 0, h = (msb[py * 99 + (px >> 3)] & m) ? 1 : 0;
+      fputc((h * 2 + l) * 85, f);
+    }
+  fclose(f);
+}
+
 int main(int argc, char** argv) {
   if (argc < 4) { fprintf(stderr, "usage: reader-sim book cache-dir out-dir [pages]\n"); return 2; }
   const int pages = argc > 4 ? atoi(argv[4]) : 3;
@@ -124,6 +142,7 @@ int main(int argc, char** argv) {
   if (argc > 7) typo.lineSpacingPct = static_cast<uint8_t>(atoi(argv[7]));
   if (argc > 8) typo.marginX = static_cast<uint8_t>(atoi(argv[8]));
   reader::setTypography(typo);
+  reader::setGrayImages(getenv("X3_GRAY") != nullptr);  // X3_GRAY=1: four-tone images, cover shown
   reader::BookReader r;
 #ifdef HEAPTRACK
   heaptrack_start();
@@ -147,6 +166,14 @@ int main(int argc, char** argv) {
     char path[512];
     snprintf(path, sizeof path, "%s/page%02d.pgm", argv[3], i);
     savePortrait(fb, path);
+    const gray::Map* maps = nullptr;
+    if (const int n = r.grayMaps(&maps)) {
+      snprintf(path, sizeof path, "%s/page%02d-gray.pgm", argv[3], i);
+      saveGray(fb, maps, n, path);
+      for (int k = 0; k < n; ++k)
+        printf("  gray map %d: %ux%u at (%d,%d), 1/%d resolution\n", k, maps[k].w, maps[k].h, maps[k].x, maps[k].y,
+               1 << maps[k].shift);
+    }
     printf("page %d: chapter %u page %u/%u  %u%%  \"%s\"\n", i, r.chapter(), r.page() + 1, r.chapterPages(),
            r.percent(), r.chapterTitle());
     if (!r.nextPage()) break;

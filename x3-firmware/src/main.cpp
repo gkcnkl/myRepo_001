@@ -558,6 +558,37 @@ void renderReaderPage() {
                        bookReader.chapterPages(), bookReader.isTurkish());
 }
 
+// A page with images: the B/W frame as the base, a settle pass over the
+// images' region, then both absolute gray planes in 8-row strips (the planes
+// never exist whole: 1.6 KB of strip buffers), then the gray refresh. The
+// driver makes the next B/W refresh a clean one. False when the panel says no.
+bool showGrayPage(const gray::Map* maps, int count) {
+  if (!epd.displayGrayscaleBase(freeink::GrayscaleMode::Absolute, EInkDisplay::HALF_REFRESH)) return false;
+  int x0 = gray::kPanelCols, y0 = gray::kPanelRows, x1 = 0, y1 = 0;  // panel coordinates
+  for (int i = 0; i < count; ++i) {
+    const gray::Map& m = maps[i];
+    const int px0 = m.y, px1 = m.y + m.h, py0 = gray::kPanelRows - (m.x + m.w), py1 = gray::kPanelRows - m.x;
+    if (px0 < x0) x0 = px0;
+    if (px1 > x1) x1 = px1;
+    if (py0 < y0) y0 = py0;
+    if (py1 > y1) y1 = py1;
+  }
+  if (x0 < 0) x0 = 0;
+  if (y0 < 0) y0 = 0;
+  if (x1 > x0 && y1 > y0) epd.preconditionGrayscale(x0, y0, x1 - x0, y1 - y0);
+  static uint8_t lsb[8 * gray::kRowBytes], msb[8 * gray::kRowBytes];
+  const uint8_t* fb = epd.getFrameBuffer();
+  for (int row = 0; row < gray::kPanelRows; row += 8) {
+    const int n = gray::kPanelRows - row < 8 ? gray::kPanelRows - row : 8;
+    gray::buildStrip(fb, maps, count, row, n, lsb, msb);
+    epd.writeGrayscalePlaneStrip(EInkDisplay::GRAY_PLANE_LSB, lsb, row, n);
+    epd.writeGrayscalePlaneStrip(EInkDisplay::GRAY_PLANE_MSB, msb, row, n);
+  }
+  epd.displayGrayBuffer();
+  epd.cleanupGrayscaleBuffers(epd.getFrameBuffer());
+  return true;
+}
+
 // screenChange -> HALF refresh; deepClean -> white pass first (no ghosts).
 void render(bool screenChange, bool deepClean = false) {
   if (deepClean) cleanPanel();
@@ -570,6 +601,14 @@ void render(bool screenChange, bool deepClean = false) {
     case Screen::Library: ui::drawLibrary(screen, app); break;
     case Screen::Reader:
       renderReaderPage();
+      {
+        const gray::Map* maps = nullptr;
+        const int n = bookReader.grayMaps(&maps);
+        if (n > 0 && showGrayPage(maps, n)) {
+          readerPageTurns = 0;
+          return;
+        }
+      }
       // Page turns use FAST refresh; a clean HALF every few pages keeps text crisp.
       if (!screenChange && ++readerPageTurns < kReaderPagesBeforeClean) {
         epd.displayBuffer(EInkDisplay::FAST_REFRESH);
@@ -913,6 +952,11 @@ void setup() {
 
   epd.setDisplayX3();
   epd.begin();
+  {
+    const auto gray = epd.grayscaleCapabilities(freeink::GrayscaleMode::Absolute);
+    reader::setGrayImages(gray.supported() && gray.stripUploads);
+    Serial.printf("[x3] gray images: %s\n", gray.supported() && gray.stripUploads ? "on" : "off");
+  }
   epd.requestResync();
   screen.setRotation(3);  // portrait 528x792, upright on the X3
 

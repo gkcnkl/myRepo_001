@@ -6,6 +6,7 @@
 #include <cache/PageCache.h>
 #include <css/Css.h>
 #include <layout/ChapterLayout.h>
+#include <render/ImageRenderer.h>
 #include <render/PageRenderer.h>
 #include <render/TtfFont.h>
 #include <stdio.h>
@@ -151,6 +152,16 @@ uint8_t nextSize(uint8_t sizePx) {
 }
 
 void setTypography(const Typography& t) { gTypo = sanitize(t); }
+
+namespace {
+bool gGrayImages = false;
+bool storeGrayRow(void* user, uint16_t y, const uint8_t* g, uint16_t width) {
+  gray::storeRow(*static_cast<gray::Map*>(user), y, g, width);
+  return true;
+}
+}  // namespace
+
+void setGrayImages(bool on) { gGrayImages = on; }
 const Typography& typography() { return gTypo; }
 const char* lastError() { return gError; }
 
@@ -255,14 +266,20 @@ OpenResult BookReader::open(BookSource& source, CacheStorage& cache, bool isText
     return OpenResult::Broken;
   }
   // A cover-only first chapter (an image, no text) is skipped: start reading
-  // where the text starts.
+  // where the text starts. With gray images a cover small enough to decode
+  // stays: the book opens on its cover in four tones.
   if (!isText && spineCount_ > 1 && chapterPages_ <= 1) {
     Page page{};
     m.scratch.reset();
     const bool coverOnly = chapterPages_ == 0 || (m.pages.readPage(0, m.scratch, &page) == BookStatus::Ok &&
                                                    page.runCount == 0);
+    bool showCover = false;
+    if (coverOnly && gGrayImages && chapterPages_ == 1 && page.imageCount == 1) {
+      const ZipEntry* e = m.book.zip().find(page.images[0].href);
+      showCover = e != nullptr && e->uncompressedSize <= kMaxImageBytes;
+    }
     m.scratch.reset();
-    if (coverOnly) {
+    if (coverOnly && !showCover) {
       firstSpine_ = 1;
       if (!openChapter(1)) {
         close();
@@ -379,14 +396,42 @@ bool BookReader::prevPage() {
   return false;
 }
 
+// Decodes the page's images a second time into 2-bit gray maps in the parse
+// arena (idle once the text is drawn), each at the finest resolution that
+// still fits; an image that fits at none stays black and white only.
+void BookReader::keepGrayMaps(const freeink::book::Page& page) {
+  Impl& m = *impl_;
+  m.parse.reset();
+  const ZipCatalog& zip = m.book.zip();
+  for (uint16_t i = 0; i < page.imageCount && grayCount_ < kMaxGrayImages; ++i) {
+    const PageImage& im = page.images[i];
+    gray::Map& g = grayMaps_[grayCount_];
+    uint8_t* data = nullptr;
+    size_t bytes = 0;
+    for (uint8_t shift = 0; shift <= 2 && data == nullptr; ++shift) {
+      bytes = gray::plan(g, im.x, im.y, im.width, im.height, shift);
+      data = static_cast<uint8_t*>(m.parse.alloc(bytes, 4));
+    }
+    if (data == nullptr) continue;
+    memset(data, 0xFF, bytes);  // white until decoded
+    g.data = data;
+    const size_t mark = m.scratch.mark();
+    const BookStatus st = ImageRenderer::render(*m.source, zip, im, m.scratch, storeGrayRow, &g);
+    m.scratch.release(mark);
+    if (st == BookStatus::Ok) ++grayCount_;
+  }
+}
+
 bool BookReader::render(uint8_t* fb) {
   Impl& m = *impl_;
+  grayCount_ = 0;
   memset(fb, 0xFF, static_cast<size_t>(kPageH / 8) * kPageW);  // panel: 792 x 528, 99 bytes/row
   if (!open_ || !m.pagesOpen || chapterPages_ == 0) return false;
   m.scratch.reset();
   Page page{};
   trace("sayfa", static_cast<int>(page_));
   if (m.pages.readPage(page_, m.scratch, &page) != BookStatus::Ok) return false;
+  const size_t pageMark = m.scratch.mark();  // the page's own data ends here
   FrameTarget target{fb, kPageH, kPageW, kPageH / 8, FrameFormat::Mono1Sharp, FrameRotation::Portrait};
   const ZipCatalog& zip = m.book.zip();
   // Images first (they decode through the scratch arena), only when small
@@ -423,6 +468,10 @@ bool BookReader::render(uint8_t* fb) {
   }
   PageRenderer::renderText(page, m.fonts, target);
   gPool = RasterPool{};
+  if (gGrayImages && imagesOk && st == BookStatus::Ok && page.imageCount > 0 && !m.isText) {
+    m.scratch.release(pageMark);  // drop the glyph pool, keep the page itself
+    keepGrayMaps(page);
+  }
   m.scratch.reset();
   return st == BookStatus::Ok;
 }

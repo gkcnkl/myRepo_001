@@ -18,6 +18,6 @@ G=".pio/libdeps/x3/Adafruit GFX Library"
 Q=".pio/libdeps/x3/QRCode/src"
 [ -f "$OUT/obj/qrcode.o" ] || cc -O1 -c "$Q/qrcode.c" -I"$Q" -o "$OUT/obj/qrcode.o"
 c++ -std=c++17 -O1 -w -DFREEINK_BOOK_SMALL=1 -DFREEINK_FONT_ADVANCE_SLOTS=128 -DFREEINK_FONT_GLYPH_SLOTS=48 -DFREEINK_BOOK_MAX_RUNS_PER_PAGE=448 -include src/reader/stbtt_alloc.h $INC -Itools/preview/shim -I"$G" -I"$Q" \
-  $CORE src/reader/book_reader.cpp tools/reader-sim/sim.cpp \
+  $CORE src/reader/book_reader.cpp src/reader/gray.cpp tools/reader-sim/sim.cpp \
   src/ui.cpp src/app.cpp src/tasks.cpp src/text.cpp src/clock.cpp src/library.cpp "$G/Adafruit_GFX.cpp" \
   "$OUT"/obj/*.o -o "$OUT/reader-sim"

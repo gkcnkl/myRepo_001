@@ -4,6 +4,7 @@
 
 #include "../../src/app.h"
 #include "../../src/clock.h"
+#include "../../src/reader/gray.h"
 #include "../../src/sync_logic.h"
 #include "../../src/tasks.h"
 #include "../../src/text.h"
@@ -749,6 +750,65 @@ static void testClock() {
   for (const char* s : bad) CHECK(!parseSetTime(s, strlen(s), p));
 }
 
+
+static void testGray() {
+  // Quantize: the ends stay pure, mid gray dithers between the middle levels.
+  for (int y = 0; y < 4; ++y)
+    for (int x = 0; x < 4; ++x) {
+      CHECK(gray::quantize(0, x, y) == 0);
+      CHECK(gray::quantize(255, x, y) == 3);
+      const uint8_t m = gray::quantize(128, x, y);
+      CHECK(m == 1 || m == 2);
+    }
+  int sum = 0;  // a flat 1/3 gray averages to level 1
+  for (int y = 0; y < 4; ++y)
+    for (int x = 0; x < 4; ++x) sum += gray::quantize(85, x, y);
+  CHECK(sum == 16);
+
+  // Full resolution: 2-bit levels, 4 per byte.
+  gray::Map m;
+  CHECK(gray::plan(m, 10, 20, 5, 3, 0) == (5 * 3 + 3) / 4);
+  CHECK(m.mw == 5 && m.mh == 3 && m.depth == 2);
+  uint8_t data[8] = {0};
+  m.data = data;
+  gray::setCell(m, 4, 2, 2);
+  gray::setCell(m, 0, 0, 3);
+  CHECK(gray::cell(m, 4, 2) == 2 && gray::cell(m, 0, 0) == 3 && gray::cell(m, 1, 0) == 0);
+  CHECK(gray::levelAt(m, 14, 22) == 2);
+
+  // Half resolution: 4-bit gray steps, 2 per byte; even rows only, each cell
+  // the average of its block's pixels; the level is dithered per panel pixel.
+  CHECK(gray::plan(m, 10, 20, 9, 5, 1) == (5 * 3 + 1) / 2);
+  CHECK(m.mw == 5 && m.mh == 3 && m.depth == 4);
+  memset(data, 0, sizeof data);
+  uint8_t row[9] = {255, 255, 0, 0, 0, 255, 255, 255, 255};
+  gray::storeRow(m, 1, row, 9);  // odd row: skipped
+  CHECK(gray::cell(m, 0, 0) == 0);
+  gray::storeRow(m, 2, row, 9);
+  CHECK(gray::cell(m, 0, 1) == 15 && gray::cell(m, 1, 1) == 0 && gray::cell(m, 2, 1) == 7 && gray::cell(m, 4, 1) == 15);
+  CHECK(gray::levelAt(m, 10, 22) == 3 && gray::levelAt(m, 12, 22) == 0);
+
+  // buildStrip: frame bits pass through as (1,1) / (0,0); the map wins inside
+  // its rectangle. Logical (x, y) is panel row 527 - x, column y.
+  static uint8_t fb[gray::kPanelRows * gray::kRowBytes];
+  memset(fb, 0xFF, sizeof fb);
+  fb[0] = 0x7F;  // panel row 0, column 0 black
+  gray::Map img;
+  uint8_t px[1] = {0};
+  gray::plan(img, 527, 8, 1, 4, 0);  // logical x 527 = panel row 0, columns 8..11
+  img.data = px;
+  gray::setCell(img, 0, 0, 0);  // black
+  gray::setCell(img, 0, 1, 1);  // dark
+  gray::setCell(img, 0, 2, 2);  // light
+  gray::setCell(img, 0, 3, 3);  // white
+  uint8_t lsb[2 * gray::kRowBytes], msb[2 * gray::kRowBytes];
+  gray::buildStrip(fb, &img, 1, 0, 2, lsb, msb);
+  CHECK(lsb[0] == 0x7F && msb[0] == 0x7F);  // the black frame pixel: (0,0)
+  // columns 8..11 are the high nibble of byte 1: LSB 0,1,0,1 / MSB 0,0,1,1
+  CHECK((lsb[1] & 0xF0) == 0x50 && (msb[1] & 0xF0) == 0x30);
+  CHECK((lsb[1] & 0x0F) == 0x0F && msb[gray::kRowBytes + 1] == 0xFF);  // the rest untouched
+}
+
 int main() {
   testClock();
   testCleanTitle();
@@ -779,6 +839,7 @@ int main() {
   testLibraryModel();
   testShelfLayout();
   testLibraryNavigation();
+  testGray();
   if (failures) {
     printf("%d check(s) failed\n", failures);
     return 1;

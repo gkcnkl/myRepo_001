@@ -44,7 +44,7 @@ code{font:inherit;color:var(--ink)}
 /* StatusLabel: a word, never colour alone. */
 .state{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--lila);line-height:1.3}
 .state.late{color:var(--mor)}
-.rt .state{margin-left:8px;white-space:nowrap}
+.rt .state{margin-left:8px;white-space:nowrap;display:inline-block}
 /* Fields follow NoteField's frame (bg, 1px line, square; focus turns the border ink) in the text face. */
 .fld{display:block;margin-top:14px}
 .fld span{display:block;font-size:9.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:7px;line-height:1.3}
@@ -66,6 +66,27 @@ details{margin-top:14px}
 summary{cursor:pointer;font-size:9.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--muted);font-weight:600;min-height:44px;display:flex;align-items:center}
 summary:focus-visible{outline:2px solid var(--lila);outline-offset:2px}
 [hidden]{display:none!important}
+/* The briefing as the X3 shows it, in this system's type: its own masthead,
+   section headings, rows with a state mark, measures with a hairline bar. */
+.bm{margin-top:14px}
+.bt{font-family:var(--display);font-weight:500;color:var(--ink);font-size:clamp(28px,7vw,38px);line-height:1.08;margin:6px 0 0}
+.bm .rule{margin-top:10px}
+.bsec{margin-top:26px}
+.bsec .hr{background:var(--line)}
+.mk{flex:none;width:18px;height:18px;border:1.5px solid var(--ink);border-radius:50%;margin-top:2px}
+.mk.s{background:linear-gradient(90deg,var(--ink) 50%,transparent 50%)}
+.mk.x{background:var(--ink)}
+.mk.c{border-color:var(--muted);background:linear-gradient(135deg,transparent 46%,var(--muted) 46%,var(--muted) 54%,transparent 54%)}
+.tm{font-family:var(--display);color:var(--ink);font-variant-numeric:tabular-nums;margin-right:10px;white-space:nowrap}
+.row.x .rt,.row.c .rt{color:var(--muted);text-decoration:line-through;text-decoration-thickness:1px}
+.ms{padding:12px 0;border-bottom:1px solid var(--line)}
+.mh{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.ml{font-size:10px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;color:var(--ink)}
+.mv{font-size:13px;color:var(--body);font-variant-numeric:tabular-nums;text-align:right}
+.mt{height:4px;background:var(--line);margin-top:8px}
+.mt i{display:block;height:4px;background:var(--ink)}
+.gs{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0 16px}
+.gs .ms .mv{font-family:var(--display);font-size:20px;color:var(--ink);text-align:left;margin-top:4px}
 /* FooterBar */
 .bar{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;justify-content:space-between;align-items:center;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:500;line-height:1.3}
 .bar b{font-family:var(--display);font-size:14px;font-weight:500;color:var(--ink);letter-spacing:0;font-variant-numeric:tabular-nums;line-height:1.4}
@@ -75,6 +96,12 @@ summary:focus-visible{outline:2px solid var(--lila);outline-offset:2px}
 <div class="rule"></div>
 <div class="dateline"><span class="d" id="clock">Saat ayarlanıyor…</span><span id="dl_books"></span><span id="dl_tasks"></span></div>
 <p class="fixed">Cihaz yalnız eşitleme tuşuna (listede sağ yan tuş) basınca kayıtlı Wi-Fi'a bağlanıp depoyla eşitlenir. Bu sayfa yalnız ayar, kitap ve elle düzeltme içindir.</p>
+
+<div class="sec">
+<h2>Brifing</h2><div class="hr"></div>
+<div id="brief"><div class="empty">Yükleniyor…</div></div>
+<div class="kaynak">Kaynak: cihazdaki <code>brifing.txt</code>, işaretlerinle birlikte; X3'teki düzenle. Değiştirmek için cihazda TAMAM tuşunu ya da aşağıdaki elle düzenlemeyi kullan.</div>
+</div>
 
 <div class="sec">
 <h2>Eşitleme</h2><div class="hr"></div>
@@ -227,8 +254,52 @@ document.getElementById('b_day').textContent=DAYS[d.getDay()];
 // FooterBar counter: done tasks / all tasks in the device's list.
 function tally(){var all=0,done=0;t.value.split('\n').forEach(function(l){var m=l.match(/^\[(.)\]/);if(m){all++;if(m[1]==='x')done++}});
   document.getElementById('b_done').textContent=done+' / '+all;document.getElementById('dl_tasks').textContent=all+' görev'}
-t.oninput=tally;
-fetch('/brifing.txt').then(function(r){return r.text()}).then(function(x){t.value=x;tally()}).catch(function(){show('Dosya okunamadı')});
+// The briefing view: brifing.txt parsed the way the device parses it.
+var WX={gunes:'Güneşli',parcali:'Parçalı bulutlu',bulut:'Bulutlu',yagmur:'Yağmurlu',kar:'Karlı',firtina:'Fırtınalı',sis:'Sisli'};
+function grp(n){return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,'.')}
+function hm(m){var h=Math.floor(m/60),k=m%60;return h?(k?h+'sa '+k+'dk':h+'sa'):k+'dk'}
+function mtext(v,g,u){if(v<0||isNaN(v))return 'veri yok';if(u==='süre')return hm(v)+' / '+hm(g);
+  if(u==='₺')return grp(v)+' ₺ / '+grp(g)+' ₺';return grp(v)+' / '+grp(g)+(u?' '+u:'')}
+function brief(){
+  var head={},secs=[],cur=null,top=[],ind=[];
+  function sec(n){cur={name:n,items:[],ms:[]};secs.push(cur)}
+  t.value.split('\n').forEach(function(raw){
+    var l=raw.trim();if(!l||l[0]==='#'&&l.slice(0,2)!=='##')return;
+    if(l.slice(0,2)==='##'){sec(l.replace(/^#+\s*/,''));return}
+    var kv=l.match(/^([a-zçğıöşü]+):\s*(.*)$/i);
+    if(kv&&!/^\[/.test(l)){var k=kv[1].toLowerCase(),v=kv[2],c=v.split('|').map(function(x){return x.trim()});
+      if(k==='ust')head.ust=v;else if(k==='baslik'||k==='başlık')head.baslik=v;else if(k==='alt')head.alt=v;
+      else if(k==='hava')head.hava=c;else if(k==='gosterge'||k==='gösterge')ind.push(c);
+      else if(k==='olcu'||k==='ölçü')(cur?cur.ms:top).push(c);return}
+    var m=l.replace(/^- /,'').match(/^\[(.)\]\s*(.*)$/);if(!m)return;
+    var st=m[1].toLowerCase(),rest=m[2],tm='',p=rest.indexOf('|');
+    if(p>0&&/^\d/.test(rest)){tm=rest.slice(0,p).trim();rest=rest.slice(p+1).trim()}
+    if(!cur)sec('');
+    cur.items.push({s:st==='x'?'x':(st==='-'||st==='~')?'c':st==='/'?'s':'',tm:tm,t:rest});
+  });
+  var h='<div class="bm">';
+  if(head.ust)h+='<div class="eyebrow">'+esc(head.ust)+'</div>';
+  h+='<div class="bt">'+esc(head.baslik||'Brifing')+'</div><div class="rule"></div><div class="dateline">';
+  if(head.alt)h+='<span class="d">'+esc(head.alt)+'</span>';
+  if(head.hava&&head.hava.length>2)h+='<span>'+esc(WX[head.hava[0]]||head.hava[0])+' · '+esc(head.hava[1])+'° / '+esc(head.hava[2])+'°</span>';
+  h+='</div></div>';
+  function msr(c){var v=c[1]==='-'?-1:+c[1],g=+c[2]||0,u=c[3]||'',w=v>0&&g>0?Math.min(100,v*100/g):0;
+    return '<div class="ms"><div class="mh"><span class="ml">'+esc(c[0])+'</span><span class="mv">'+esc(mtext(v,g,u))+'</span></div><div class="mt"><i style="width:'+w.toFixed(1)+'%"></i></div></div>'}
+  if(ind.length)h+='<div class="bsec"><div class="gs">'+ind.map(function(c){return '<div class="ms"><div class="ml">'+esc(c[0])+'</div><div class="mv">'+esc(c[1]||'')+'</div>'+(c[2]?'<div class="rm">'+esc(c[2])+'</div>':'')+'</div>'}).join('')+'</div></div>';
+  if(top.length)h+='<div class="bsec">'+top.map(msr).join('')+'</div>';
+  var LBL={s:'başladı',x:'bitti',c:'iptal'};
+  secs.forEach(function(sc){
+    if(!sc.items.length&&!sc.ms.length)return;
+    h+='<div class="bsec">'+(sc.name?'<h2>'+esc(sc.name)+'</h2><div class="hr"></div>':'');
+    h+=sc.ms.map(msr).join('');
+    h+=sc.items.map(function(it){return '<div class="row '+it.s+'"><span class="mk '+it.s+'"></span><div class="rb"><div class="rt">'+
+      (it.tm?'<span class="tm">'+esc(it.tm)+'</span>':'')+esc(it.t)+(it.s?'<span class="state">'+LBL[it.s]+'</span>':'')+'</div></div></div>'}).join('');
+    h+='</div>';
+  });
+  document.getElementById('brief').innerHTML=h;
+}
+t.oninput=function(){tally();brief()};
+fetch('/brifing.txt').then(function(r){return r.text()}).then(function(x){t.value=x;tally();brief()}).catch(function(){show('Dosya okunamadı');document.getElementById('brief').innerHTML='<div class="empty">Brifing okunamadı.</div>'});
 document.getElementById('save').onclick=function(){
   show('Gönderiliyor…');
   fetch('/brifing',{method:'POST',body:t.value}).then(function(r){return r.text()}).then(show).catch(function(){show('Gönderilemedi')});

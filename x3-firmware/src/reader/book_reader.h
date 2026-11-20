@@ -12,6 +12,14 @@
 
 #include <BookStorage.h>
 
+#include "gray.h"
+
+namespace freeink {
+namespace book {
+struct Page;
+}  // namespace book
+}  // namespace freeink
+
 namespace reader {
 
 // Panel geometry (portrait page on the 792x528 landscape panel).
@@ -62,7 +70,7 @@ enum class OpenResult : uint8_t { Ok, NotFound, Encrypted, TooBig, Broken };
 // Images larger than this (bytes, uncompressed) are not decoded on the device:
 // a 2-3 MB cover JPEG takes tens of seconds on the ESP32-C3. A framed
 // placeholder is drawn in their place.
-constexpr uint32_t kMaxImageBytes = 200 * 1024;
+constexpr uint32_t kMaxImageBytes = 400 * 1024;
 
 // Optional progress hook (e.g. a crash breadcrumb): called with a short step
 // name ("katalog", "bolum", "sayfa") and a number (chapter or page index).
@@ -88,6 +96,11 @@ Typography sanitize(const Typography& t);
 uint8_t nextSize(uint8_t sizePx);
 // Applies to the next open(); an open book must be reopened to change.
 void setTypography(const Typography& t);
+// Four-tone images: render() also keeps each image as a gray map (see
+// gray.h) for a gray refresh, and a book's cover page is shown instead of
+// skipped. Off on panels without absolute grayscale. Applies to the next open.
+void setGrayImages(bool on);
+constexpr int kMaxGrayImages = 4;
 const Typography& typography();
 
 struct Position {
@@ -121,6 +134,12 @@ class BookReader {
   // Draws the current page into a 792x528 1-bit framebuffer (1 = white),
   // portrait, upright on the X3. Clears the page area first.
   bool render(uint8_t* framebuffer);
+  // The gray maps the last render() kept (0 when none, or gray is off). They
+  // live in the reader's parse arena: valid until the next page operation.
+  int grayMaps(const gray::Map** out) const {
+    *out = grayMaps_;
+    return grayCount_;
+  }
 
   uint16_t chapter() const { return spine_; }
   uint16_t chapterCount() const { return spineCount_; }
@@ -140,11 +159,14 @@ class BookReader {
   struct Impl;  // engine state, defined in book_reader.cpp
 
  private:
+  void keepGrayMaps(const freeink::book::Page& page);
   Impl* impl_;
   bool open_ = false;
   uint16_t spine_ = 0;
   uint16_t spineCount_ = 0;
   uint16_t firstSpine_ = 0;  // 1 when a cover-only first chapter is skipped
+  gray::Map grayMaps_[kMaxGrayImages];
+  int grayCount_ = 0;
   uint32_t page_ = 0;
   uint32_t chapterPages_ = 0;
 
