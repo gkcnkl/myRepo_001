@@ -188,6 +188,9 @@ int main(int argc, char** argv) {
       low.lastSyncMin = low.nowMin - 13 * 60 - 20;  // and an old sync: the stale tag
       { Canvas c; ui::drawList(c, low, false); c.save(out, "1b-list-low-battery"); }
       { Canvas c; ui::drawLibrary(c, low); c.save(out, "8c-library-low-battery"); }
+      App justSynced = app;  // right after a sync: only the bar says it
+      snprintf(justSynced.syncNote, sizeof justSynced.syncNote, "Eşitlendi 09:44");
+      { Canvas c; ui::drawList(c, justSynced, false); c.save(out, "1d-list-just-synced"); }
       App chg = app;
       chg.batteryPercent = 63;
       chg.charging = true;

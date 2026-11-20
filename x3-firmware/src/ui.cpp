@@ -294,7 +294,8 @@ void masthead(Adafruit_GFX& g, const App& app, const char* eyebrow, const char* 
               bool showSubtitle = true, const char* dateline = nullptr) {
   label(g, eyebrow, kM, 26);
   // The briefing's age at the right of the top line; inverted once stale.
-  if (showCounts && app.syncConfigured) {
+  // Not while the bar below says "Eşitlendi ..." (right after a sync).
+  if (showCounts && app.syncConfigured && strncmp(app.syncNote, "Eşitlendi", strlen("Eşitlendi")) != 0) {
     char age[40];
     const bool stale = syncAgeText(app.lastSyncMin, app.nowMin, age, sizeof age);
     if (age[0]) {
