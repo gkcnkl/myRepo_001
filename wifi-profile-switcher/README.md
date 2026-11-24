@@ -60,6 +60,38 @@ adında bir zamanlanmış görev oluşturur. Kurulumdan sonra ayarları değişt
 
 Bağlı olduğunuz ağın tam adını görmek için: `netsh wlan show interfaces` → `SSID` satırı.
 
+### Kablolu (Ethernet) ağlar
+
+Kablolu ağın adı olmadığı için ağ, **ağ geçidinin (modemin) MAC adresinden** tanınır:
+
+```json
+"ethernet": {
+  "adapter": "",
+  "networks": {
+    "Network 80": {
+      "gatewayMac": "90-6C-AC-F6-64-09",
+      "mode": "static",
+      "ip": "10.125.10.21",
+      "prefixLength": 24,
+      "gateway": "10.125.10.1",
+      "dns": ["8.8.8.8"]
+    }
+  }
+}
+```
+
+- `networks` içindeki ad sadece etikettir; eşleşme `gatewayMac` ile yapılır.
+- `ethernet` içinde `default` yoksa tanımsız kablolu ağlarda hiçbir şeye dokunulmaz.
+  Otomatik IP istiyorsanız `"default": { "mode": "dhcp" }` ekleyin.
+- Adaptör otomatik IP'deyken ağda DHCP yoksa, tanımlı statik profiller sırayla denenir:
+  ayar uygulanır, ağ geçidinin MAC adresi tutarsa kalır, tutmazsa geri alınır (en fazla 3 dakikada bir).
+
+Kablo o ağa takılıyken ağ geçidinin MAC adresini görmek için:
+
+```powershell
+Get-NetNeighbor -IPAddress (Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-Object -First 1).NextHop | Select-Object IPAddress, LinkLayerAddress
+```
+
 ## Kullanım
 
 Normalde hiçbir şey yapmanız gerekmez. Kontrol için (yönetici PowerShell'de):

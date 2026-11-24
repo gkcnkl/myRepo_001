@@ -24,11 +24,18 @@ New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 Copy-Item (Join-Path $ScriptDir 'Switch-WifiProfile.ps1') $InstallDir -Force
 
 $configTarget = Join-Path $InstallDir 'config.json'
-if (-not (Test-Path $configTarget)) {
-    $src = Join-Path $ScriptDir 'config.json'
-    if (-not (Test-Path $src)) { $src = Join-Path $ScriptDir 'config.example.json' }
-    Copy-Item $src $configTarget
-    Write-Host "Yapılandırma kopyalandı: $configTarget  (kendi ağlarınıza göre düzenleyin)" -ForegroundColor Yellow
+$srcConfig    = Join-Path $ScriptDir 'config.json'
+if (Test-Path $srcConfig) {
+    # Bu klasördeki config.json kurulu olanın yerini alır; eskisi config.json.bak olarak saklanır.
+    if (Test-Path $configTarget) {
+        $same = (Get-FileHash $srcConfig).Hash -eq (Get-FileHash $configTarget).Hash
+        if (-not $same) { Copy-Item $configTarget "$configTarget.bak" -Force; Write-Host "Önceki yapılandırma yedeklendi: $configTarget.bak" }
+    }
+    Copy-Item $srcConfig $configTarget -Force
+    Write-Host "Yapılandırma kopyalandı: $configTarget"
+} elseif (-not (Test-Path $configTarget)) {
+    Copy-Item (Join-Path $ScriptDir 'config.example.json') $configTarget
+    Write-Host "Örnek yapılandırma kopyalandı: $configTarget  (kendi ağlarınıza göre düzenleyin)" -ForegroundColor Yellow
 } else {
     Write-Host "Mevcut yapılandırma korundu: $configTarget"
 }
@@ -41,17 +48,22 @@ $args_  = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidde
 
 # Tetikleyiciler:
 #  - WLAN-AutoConfig olay 8001: "Kablosuz ağa başarıyla bağlanıldı"
+#  - NetworkProfile olay 10000: "Ağa bağlanıldı" (kablo takılınca da gelir)
 #  - Oturum açılışı ve bilgisayar açılışı: o anda zaten bağlıysanız ayarları düzeltmek için
 $xml = @"
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Bağlanılan Wi-Fi ağına göre adaptörün IP/DNS ayarlarını değiştirir.</Description>
+    <Description>Bağlanılan Wi-Fi / kablolu ağa göre adaptörün IP/DNS ayarlarını değiştirir.</Description>
   </RegistrationInfo>
   <Triggers>
     <EventTrigger>
       <Enabled>true</Enabled>
       <Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="Microsoft-Windows-WLAN-AutoConfig/Operational"&gt;&lt;Select Path="Microsoft-Windows-WLAN-AutoConfig/Operational"&gt;*[System[(EventID=8001)]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription>
+    </EventTrigger>
+    <EventTrigger>
+      <Enabled>true</Enabled>
+      <Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="Microsoft-Windows-NetworkProfile/Operational"&gt;&lt;Select Path="Microsoft-Windows-NetworkProfile/Operational"&gt;*[System[(EventID=10000)]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription>
     </EventTrigger>
     <BootTrigger>
       <Enabled>true</Enabled>

@@ -1,18 +1,33 @@
 {
   "adapter": "",
   "startupDelaySeconds": 3,
-
   "networks": {
     "NAT10_5G": {
       "mode": "static",
       "ip": "10.9.100.196",
       "prefixLength": 24,
       "gateway": "10.9.100.254",
-      "dns": ["8.8.8.8"]
+      "dns": [
+        "8.8.8.8"
+      ]
     }
   },
-
   "default": {
     "mode": "dhcp"
+  },
+  "ethernet": {
+    "adapter": "",
+    "networks": {
+      "Network 80": {
+        "gatewayMac": "90-6C-AC-F6-64-09",
+        "mode": "static",
+        "ip": "10.125.10.21",
+        "prefixLength": 24,
+        "gateway": "10.125.10.1",
+        "dns": [
+          "8.8.8.8"
+        ]
+      }
+    }
   }
 }

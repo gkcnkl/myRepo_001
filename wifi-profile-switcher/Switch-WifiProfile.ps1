@@ -5,6 +5,8 @@
 .DESCRIPTION
     config.json içindeki "networks" listesinde bağlı olunan SSID aranır.
     Bulunursa o profilin ayarları, bulunamazsa "default" profil uygulanır.
+    "ethernet" bölümü varsa kablolu bağlantı da yönetilir; kablolu ağ, ağ geçidinin (modemin)
+    MAC adresinden tanınır.
     Ayarlar zaten istenen durumdaysa hiçbir şey değiştirilmez (bağlantı gereksiz yere kopmaz).
 
     Normalde Install.ps1 ile kurulan zamanlanmış görev tarafından, her Wi-Fi bağlantısında
@@ -130,8 +132,43 @@ function Read-SwitcherConfig {
         foreach ($p in $config.networks.PSObject.Properties) { $errors += Test-ProfileSettings $p.Value $p.Name }
     }
     if ($config.PSObject.Properties['default'] -and $config.default) { $errors += Test-ProfileSettings $config.default 'default' }
+    if ($config.PSObject.Properties['ethernet'] -and $config.ethernet) {
+        $eth = $config.ethernet
+        if ($eth.PSObject.Properties['networks']) {
+            foreach ($p in $eth.networks.PSObject.Properties) {
+                $errors += Test-ProfileSettings $p.Value "ethernet/$($p.Name)"
+                $mac = if ($p.Value.PSObject.Properties['gatewayMac']) { [string]$p.Value.gatewayMac } else { '' }
+                if (-not (ConvertTo-NormalMac $mac)) { $errors += "[ethernet/$($p.Name)] gatewayMac gerekli (ör. 90-6C-AC-F6-64-09)" }
+            }
+        }
+        if ($eth.PSObject.Properties['default'] -and $eth.default) { $errors += Test-ProfileSettings $eth.default 'ethernet/default' }
+    }
     if ($errors.Count) { throw ("config.json hatalı:`n  " + ($errors -join "`n  ")) }
     return $config
+}
+
+# MAC adresini "90-6C-AC-F6-64-09" biçimine getirir; geçersizse $null.
+function ConvertTo-NormalMac {
+    param([string]$Mac)
+    if (-not $Mac) { return $null }
+    $hex = ($Mac -replace '[-:\.\s]', '').ToUpperInvariant()
+    if ($hex -notmatch '^[0-9A-F]{12}$' -or $hex -eq '000000000000') { return $null }
+    return (($hex -split '(..)' | Where-Object { $_ }) -join '-')
+}
+
+# Kablolu ağı, ağ geçidinin (modemin) MAC adresinden tanır. Bulamazsa ethernet.default'u (varsa) döner.
+function Resolve-EthernetProfile {
+    param($EthConfig, [string]$GatewayMac)
+    $mac = ConvertTo-NormalMac $GatewayMac
+    if ($mac -and $EthConfig.PSObject.Properties['networks']) {
+        foreach ($p in $EthConfig.networks.PSObject.Properties) {
+            if ((ConvertTo-NormalMac $p.Value.gatewayMac) -eq $mac) { return [pscustomobject]@{ Name = $p.Name; Settings = $p.Value } }
+        }
+    }
+    if ($EthConfig.PSObject.Properties['default'] -and $EthConfig.default) {
+        return [pscustomobject]@{ Name = '(default)'; Settings = $EthConfig.default }
+    }
+    return $null
 }
 
 # Mevcut durum, istenen durumla aynı mı? (Aynıysa dokunmayız.)
@@ -228,7 +265,7 @@ function Set-StaticIPv4 {
 }
 
 function Set-DhcpIPv4 {
-    param([int]$IfIndex, [string]$Alias, $Settings)
+    param([int]$IfIndex, [string]$Alias, $Settings, [switch]$NoRenew)
     # Elle girilmiş IP ve ağ geçidini temizle, sonra DHCP'yi aç
     Get-NetIPAddress -InterfaceIndex $IfIndex -AddressFamily IPv4 -PrefixOrigin Manual -ErrorAction SilentlyContinue |
         Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
@@ -241,8 +278,34 @@ function Set-DhcpIPv4 {
     } else {
         Set-DnsClientServerAddress -InterfaceIndex $IfIndex -ResetServerAddresses
     }
-    # Hemen adres alsın
-    & ipconfig.exe /renew "$Alias" | Out-Null
+    # Hemen adres alsın (DHCP sunucusu olmayan ağda bu uzun sürebilir; denemede atlanır)
+    if (-not $NoRenew) { & ipconfig.exe /renew "$Alias" | Out-Null }
+}
+
+function Get-EthernetAdapter {
+    param([string]$Name)
+    if ($Name) { return Get-NetAdapter -Name $Name -ErrorAction SilentlyContinue }
+    # NdisPhysicalMedium 14 = 802.3 (kablolu Ethernet)
+    $eth = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { $_.NdisPhysicalMedium -eq 14 })
+    $up = @($eth | Where-Object Status -eq 'Up')
+    if ($up.Count) { return $up[0] }
+    if ($eth.Count) { return $eth[0] }
+    return $null
+}
+
+# Ağ geçidinin MAC adresini ARP tablosundan okur (gerekirse ping ile tabloyu doldurur).
+function Get-GatewayMac {
+    param([int]$IfIndex, [string]$Gateway)
+    if (-not $Gateway) { return $null }
+    for ($i = 0; $i -lt 3; $i++) {
+        & ping.exe -n 1 -w 1000 $Gateway | Out-Null
+        $n = Get-NetNeighbor -InterfaceIndex $IfIndex -IPAddress $Gateway -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+             Where-Object { $_.State -notin @('Unreachable', 'Incomplete') } | Select-Object -First 1
+        $mac = if ($n) { ConvertTo-NormalMac $n.LinkLayerAddress } else { $null }
+        if ($mac) { return $mac }
+        Start-Sleep -Seconds 1
+    }
+    return $null
 }
 
 function Format-Settings {
@@ -262,21 +325,38 @@ function Format-State {
 # ---------------------------------------------------------------------------
 # Ana akış
 # ---------------------------------------------------------------------------
-function Invoke-Switcher {
-    $config  = Read-SwitcherConfig -Path $ConfigPath
-    $adName  = if ($config.PSObject.Properties['adapter']) { [string]$config.adapter } else { '' }
+
+# Seçilen profili adaptöre uygular (zaten doğruysa dokunmaz).
+function Invoke-ApplyProfile {
+    param($Adapter, [string]$Label, $Match, $Current)
+    if (Test-StateMatches $Match.Settings $Current) {
+        Write-Log "$Label -> $($Match.Name): ayarlar zaten doğru."
+        return
+    }
+    $target = Format-Settings $Match.Settings
+    if ($DryRun) {
+        Write-Log "[DENEME] $Label -> $($Match.Name): $(Format-State $Current)  ==>  $target"
+        return
+    }
+    Write-Log "$Label -> $($Match.Name): $target uygulanıyor (önceki: $(Format-State $Current))"
+    if ($Match.Settings.mode -eq 'static') {
+        Set-StaticIPv4 -IfIndex $Adapter.ifIndex -Settings $Match.Settings
+    } else {
+        Set-DhcpIPv4 -IfIndex $Adapter.ifIndex -Alias $Adapter.Name -Settings $Match.Settings
+    }
+    Write-Log 'Tamam.'
+}
+
+function Invoke-WifiPart {
+    param($Config)
+    $adName  = if ($Config.PSObject.Properties['adapter']) { [string]$Config.adapter } else { '' }
     $adapter = Get-WifiAdapter -Name $adName
-
-    # Olay tetikleyicisi bağlantıdan hemen sonra çalışır; Windows'un arayüzü hazırlaması için kısa bekleme.
-    $wait = 0
-    if (-not $Status -and $config.PSObject.Properties['startupDelaySeconds']) { $wait = [int]$config.startupDelaySeconds }
-    if ($wait -gt 0) { Start-Sleep -Seconds $wait }
-
     $ssid    = Get-ConnectedSsid -Adapter $adapter
     $current = Get-CurrentIPv4State -IfIndex $adapter.ifIndex
 
     if ($Status) {
-        $p = Resolve-NetworkProfile -Config $config -Ssid $ssid
+        $p = Resolve-NetworkProfile -Config $Config -Ssid $ssid
+        Write-Host '--- Wi-Fi ---'
         Write-Host "Adaptör      : $($adapter.Name) ($($adapter.InterfaceDescription))"
         Write-Host "Bağlı SSID   : $(if ($ssid) { $ssid } else { '(bağlı değil)' })"
         Write-Host "Profil       : $(if ($p) { $p.Name } else { '(yok)' })"
@@ -286,29 +366,95 @@ function Invoke-Switcher {
         return
     }
 
-    if (-not $ssid) { Write-Log 'Wi-Fi bağlı değil; hiçbir şey yapılmadı.'; return }
+    if (-not $ssid) { return }   # Wi-Fi bağlı değil
+    $match = Resolve-NetworkProfile -Config $Config -Ssid $ssid
+    if (-not $match) { Write-Log "Wi-Fi '$ssid' için profil yok ve 'default' tanımlı değil; dokunulmadı."; return }
+    Invoke-ApplyProfile -Adapter $adapter -Label "Wi-Fi '$ssid'" -Match $match -Current $current
+}
 
-    $match = Resolve-NetworkProfile -Config $config -Ssid $ssid
-    if (-not $match) { Write-Log "'$ssid' için profil yok ve 'default' tanımlı değil; dokunulmadı."; return }
-
-    if (Test-StateMatches $match.Settings $current) {
-        Write-Log "'$ssid' -> $($match.Name): ayarlar zaten doğru."
+function Invoke-EthernetPart {
+    param($Config)
+    if (-not ($Config.PSObject.Properties['ethernet'] -and $Config.ethernet)) { return }
+    $eth     = $Config.ethernet
+    $adName  = if ($eth.PSObject.Properties['adapter']) { [string]$eth.adapter } else { '' }
+    $adapter = Get-EthernetAdapter -Name $adName
+    if (-not $adapter) {
+        if ($Status) { Write-Host '--- Ethernet ---'; Write-Host 'Ethernet adaptörü bulunamadı.' }
+        return
+    }
+    if ($adapter.Status -ne 'Up') {
+        if ($Status) { Write-Host '--- Ethernet ---'; Write-Host "Adaptör      : $($adapter.Name) — kablo takılı değil" }
         return
     }
 
-    $target = Format-Settings $match.Settings
-    if ($DryRun) {
-        Write-Log "[DENEME] '$ssid' -> $($match.Name): $(Format-State $current)  ==>  $target"
+    $current = Get-CurrentIPv4State -IfIndex $adapter.ifIndex
+    $gwMac   = Get-GatewayMac -IfIndex $adapter.ifIndex -Gateway $current.Gateway
+    $match   = Resolve-EthernetProfile -EthConfig $eth -GatewayMac $gwMac
+
+    if ($Status) {
+        Write-Host '--- Ethernet ---'
+        Write-Host "Adaptör      : $($adapter.Name) ($($adapter.InterfaceDescription))"
+        Write-Host "Ağ geçidi MAC: $(if ($gwMac) { $gwMac } else { '(okunamadı)' })"
+        Write-Host "Profil       : $(if ($match) { $match.Name } else { '(yok — dokunulmaz)' })"
+        if ($match) { Write-Host "İstenen      : $(Format-Settings $match.Settings)" }
+        Write-Host "Şu anki      : $(Format-State $current)"
+        if ($match) { Write-Host "Durum uygun  : $(if (Test-StateMatches $match.Settings $current) { 'evet' } else { 'hayır' })" }
         return
     }
 
-    Write-Log "'$ssid' -> $($match.Name): $target uygulanıyor (önceki: $(Format-State $current))"
-    if ($match.Settings.mode -eq 'static') {
-        Set-StaticIPv4 -IfIndex $adapter.ifIndex -Settings $match.Settings
-    } else {
-        Set-DhcpIPv4 -IfIndex $adapter.ifIndex -Alias $adapter.Name -Settings $match.Settings
+    if ($gwMac) {
+        if ($match) { Invoke-ApplyProfile -Adapter $adapter -Label "Ethernet ($gwMac)" -Match $match -Current $current }
+        else { Write-Log "Ethernet: tanımsız kablolu ağ (ağ geçidi $gwMac); dokunulmadı." }
+        return
     }
-    Write-Log 'Tamam.'
+
+    # Ağ geçidi okunamadı. Adaptör otomatik IP'de ama adres alamadıysa (ağda DHCP yoksa),
+    # tanımlı statik profilleri sırayla dene: ayarı uygula, ağ geçidinin MAC'i tutarsa bırak, tutmazsa geri al.
+    if (-not $current.Dhcp -or @($current.IPs).Count) {
+        if ($match) { Invoke-ApplyProfile -Adapter $adapter -Label 'Ethernet (ağ geçidi yok)' -Match $match -Current $current }
+        return
+    }
+    if ($DryRun) { Write-Log '[DENEME] Ethernet: DHCP adresi yok; tanımlı kablolu ağlar denenecekti.'; return }
+
+    # Deneme kendi ağ olaylarını tetikler; döngüye girmemek için 3 dakikada bir deneriz.
+    $stamp = Join-Path $ScriptDir 'ethernet-probe.txt'
+    if (Test-Path $stamp) {
+        $last = [datetime]::MinValue
+        [void][datetime]::TryParse((Get-Content $stamp -Raw).Trim(), [ref]$last)
+        if (((Get-Date) - $last).TotalMinutes -lt 3) { return }
+    }
+    Set-Content -Path $stamp -Value (Get-Date -Format o)
+
+    if (-not $eth.PSObject.Properties['networks']) { return }
+    foreach ($p in $eth.networks.PSObject.Properties) {
+        $s = $p.Value
+        if ($s.mode -ne 'static') { continue }
+        Write-Log "Ethernet: DHCP adresi yok; '$($p.Name)' deneniyor..."
+        Set-StaticIPv4 -IfIndex $adapter.ifIndex -Settings $s
+        Start-Sleep -Seconds 2
+        $mac = Get-GatewayMac -IfIndex $adapter.ifIndex -Gateway $s.gateway
+        if ($mac -and $mac -eq (ConvertTo-NormalMac $s.gatewayMac)) {
+            Write-Log "Ethernet -> $($p.Name): tanındı, $(Format-Settings $s) uygulandı."
+            return
+        }
+        Write-Log "Ethernet: '$($p.Name)' değil (ağ geçidi MAC: $(if ($mac) { $mac } else { 'yok' })); geri alınıyor."
+        Set-DhcpIPv4 -IfIndex $adapter.ifIndex -Alias $adapter.Name -Settings ([pscustomobject]@{ mode = 'dhcp' }) -NoRenew
+    }
+}
+
+function Invoke-Switcher {
+    $config = Read-SwitcherConfig -Path $ConfigPath
+
+    # Olay tetikleyicisi bağlantıdan hemen sonra çalışır; Windows'un arayüzü hazırlaması için kısa bekleme.
+    $wait = 0
+    if (-not $Status -and $config.PSObject.Properties['startupDelaySeconds']) { $wait = [int]$config.startupDelaySeconds }
+    if ($wait -gt 0) { Start-Sleep -Seconds $wait }
+
+    # Biri hata verirse diğeri yine çalışsın.
+    $failed = $false
+    try { Invoke-WifiPart -Config $config } catch { Write-Log "Wi-Fi: $($_.Exception.Message)" 'ERROR'; $failed = $true }
+    try { Invoke-EthernetPart -Config $config } catch { Write-Log "Ethernet: $($_.Exception.Message)" 'ERROR'; $failed = $true }
+    if ($failed) { exit 1 }
 }
 
 # Testler betiği nokta-kaynak (dot-source) olarak yükleyince ana akış çalışmasın.

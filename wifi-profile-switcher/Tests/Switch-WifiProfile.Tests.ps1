@@ -98,3 +98,33 @@ Describe 'Test-StateMatches' {
         Test-StateMatches $dhcp $cur | Should -BeTrue
     }
 }
+
+Describe 'ConvertTo-NormalMac' {
+    It 'Farklı yazımları aynı biçime getirir' {
+        ConvertTo-NormalMac '90:6c:ac:f6:64:09' | Should -Be '90-6C-AC-F6-64-09'
+        ConvertTo-NormalMac '90-6C-AC-F6-64-09' | Should -Be '90-6C-AC-F6-64-09'
+        ConvertTo-NormalMac '906cacf66409'      | Should -Be '90-6C-AC-F6-64-09'
+    }
+    It 'Geçersiz ve boş MAC için $null döner' {
+        ConvertTo-NormalMac ''                  | Should -BeNullOrEmpty
+        ConvertTo-NormalMac '00-00-00-00-00-00' | Should -BeNullOrEmpty
+        ConvertTo-NormalMac 'xyz'               | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Resolve-EthernetProfile' {
+    BeforeAll {
+        $eth = '{"networks":{"Network 80":{"gatewayMac":"90-6C-AC-F6-64-09","mode":"static","ip":"10.125.10.21","prefixLength":24,"gateway":"10.125.10.1"}}}' | ConvertFrom-Json
+    }
+    It 'Ağ geçidi MAC eşleşince profili seçer' {
+        (Resolve-EthernetProfile -EthConfig $eth -GatewayMac '90:6c:ac:f6:64:09').Name | Should -Be 'Network 80'
+    }
+    It 'Başka ağda ve default yokken $null döner (dokunulmaz)' {
+        Resolve-EthernetProfile -EthConfig $eth -GatewayMac '11-22-33-44-55-66' | Should -BeNullOrEmpty
+        Resolve-EthernetProfile -EthConfig $eth -GatewayMac $null | Should -BeNullOrEmpty
+    }
+    It 'Default varsa başka ağda onu seçer' {
+        $e2 = '{"networks":{},"default":{"mode":"dhcp"}}' | ConvertFrom-Json
+        (Resolve-EthernetProfile -EthConfig $e2 -GatewayMac '11-22-33-44-55-66').Name | Should -Be '(default)'
+    }
+}
