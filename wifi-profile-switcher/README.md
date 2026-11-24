@@ -97,11 +97,11 @@ Get-NetNeighbor -IPAddress (Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Select-O
 Normalde hiçbir şey yapmanız gerekmez. Kontrol için (yönetici PowerShell'de):
 
 ```powershell
-& "C:\ProgramData\WifiProfileSwitcher\Switch-WifiProfile.ps1" -Status
+powershell -ExecutionPolicy Bypass -File "C:\ProgramData\WifiProfileSwitcher\Switch-WifiProfile.ps1" -Status
 ```
 
 ```powershell
-& "C:\ProgramData\WifiProfileSwitcher\Switch-WifiProfile.ps1" -DryRun
+powershell -ExecutionPolicy Bypass -File "C:\ProgramData\WifiProfileSwitcher\Switch-WifiProfile.ps1" -DryRun
 ```
 
 `-Status` bağlı SSID'yi, seçilen profili ve adaptörün şu anki ayarlarını gösterir.

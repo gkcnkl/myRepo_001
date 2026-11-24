@@ -105,4 +105,4 @@ Write-Host "Yapılandırma : $configTarget"
 Write-Host "Günlük       : $(Join-Path $InstallDir 'switcher.log')"
 Write-Host ''
 Write-Host 'Durumu görmek için:'
-Write-Host "  & '$script' -Status"
+Write-Host "  powershell -ExecutionPolicy Bypass -File `"$script`" -Status"
